@@ -1,0 +1,44 @@
+name: CI
+
+on:
+    push:
+        branches: [main]
+    pull_request:
+        branches: [main]
+
+permissions:
+    contents: read
+
+jobs:
+    test:
+        name: Test
+        runs-on: ubuntu-latest
+        steps:
+            - name: Check out source
+              uses: actions/checkout@v5
+
+            - name: Set up Go
+              uses: actions/setup-go@v6
+              with:
+                  go-version: "1.27.1"
+                  cache: true
+
+            - name: Check formatting
+              run: |
+                  unformatted="$(gofmt -l $(find . -name '*.go' -not -path './.git/*'))"
+                  test -z "$unformatted"
+
+            - name: Vet
+              run: go vet ./...
+
+            - name: Test
+              run: go test -race ./...
+
+            - name: Build
+              run: go build ./...
+
+            - name: Validate conventional example
+              run: go run . -n examples/project/example.yaml
+
+            - name: Validate slide-template example
+              run: go run . -n -t examples/templates/appdemo-template.yaml examples/templates/appdemo-project.yaml
