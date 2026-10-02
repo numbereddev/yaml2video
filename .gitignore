@@ -1,0 +1,12 @@
+.out/
+.dist/
+.gocache
+tmp/
+
+# Environment
+.env*
+!.env*.example
+
+# OS
+.DS_Store
+desktop.ini
