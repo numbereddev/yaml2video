@@ -108,4 +108,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and pull-req
 
 ## License
 
-This repository does not currently include a license file. Add one before redistributing the project or its binaries under specific terms.
+This project is licensed under the [MIT License](LICENSE).

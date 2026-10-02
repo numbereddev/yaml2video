@@ -27,7 +27,7 @@ scenes: []
 | `video` | Required output canvas. `width`, `height`, and `fps` must be positive; `background` must be a supported color. |
 | `defaults.text` | Typography and optional background used by text layers. |
 | `defaults.subtitle` | Typography and optional background used by subtitles. |
-| `music` | Optional looping background-audio track. It is included only when `path` is non-empty. |
+| `music` | Optional looping background-audio track. It is included only when `path` is non-empty; its path may be a local file or an HTTP(S) URL. |
 | `scenes` | Required non-empty ordered list of scenes. |
 
 ## Colors and opacity
@@ -76,7 +76,7 @@ Layers render in order: later visual layers appear over earlier layers. Every la
   transform: center
 ```
 
-`path` is required. `fit` is `cover` by default: it fills the target area and crops excess source content. `contain` preserves the entire source and pads the unused area transparently. Without dimensions, a media layer fills the canvas.
+`path` is required. It may be a local file path or an `http://` or `https://` URL. URLs are passed directly to FFmpeg; the server must expose media in a format supported by the installed FFmpeg build. Quote URLs that include YAML-significant characters such as `#`. `fit` is `cover` by default: it fills the target area and crops excess source content. `contain` preserves the entire source and pads the unused area transparently. Without dimensions, a media layer fills the canvas.
 
 For videos, `source_offset` skips seconds at the beginning of the source and `duration` limits playback. `trim` crops a fraction of the source frame before fitting:
 
@@ -140,7 +140,7 @@ A text background may be set in `defaults.text`, on the complete text layer, or 
   volume: 0.8
 ```
 
-`path` is required. Audio starts with its containing scene. `volume` defaults to `1` and must not be negative. Audio has no visual output.
+`path` is required and may be a local file path or an `http://` or `https://` URL. Audio starts with its containing scene. `volume` defaults to `1` and must not be negative. Audio has no visual output.
 
 ## Placement and scaling
 

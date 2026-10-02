@@ -12,7 +12,7 @@ yaml2video -n project.yaml
 
 `-n` is the safest first command: it parses and validates the project, prints a timeline summary, and prints the FFmpeg commands without writing intermediate files or invoking FFmpeg.
 
-Paths in YAML are passed to FFmpeg as written. Run the command from a directory where the paths resolve, or use paths relative to your working directory.
+Media paths in YAML are passed to FFmpeg as written. They may be local files (resolved from the working directory) or `http://`/`https://` URLs. Remote media is read by FFmpeg during rendering rather than downloaded by `yaml2video`; the server and installed FFmpeg build must support the media and protocol.
 
 ## Minimal conventional project
 

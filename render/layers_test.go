@@ -7,6 +7,78 @@ import (
 	"github.com/ondics/yaml2video/project"
 )
 
+func TestHTTPMediaURLsArePassedToFFmpeg(t *testing.T) {
+	const (
+		imageURL = "https://cdn.example.com/cover.png?revision=42"
+		videoURL = "http://media.example.com/demo.mp4?token=abc"
+		audioURL = "https://media.example.com/narration.wav"
+		musicURL = "https://media.example.com/music.mp3"
+	)
+
+	value, err := project.Parse([]byte(`
+video:
+  width: 320
+  height: 240
+  fps: 30
+  background: black
+music:
+  path: "https://media.example.com/music.mp3"
+scenes:
+  - id: remote-media
+    duration: 2
+    layers:
+      - type: image
+        path: "https://cdn.example.com/cover.png?revision=42"
+      - type: video
+        path: "http://media.example.com/demo.mp4?token=abc"
+      - type: audio
+        path: "https://media.example.com/narration.wav"
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	plan, err := Compile(value, Options{WorkDir: ".out/test", Output: "test.mp4"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got := plan.Scenes[0].Layers[0].Path; got != imageURL {
+		t.Errorf("image URL = %q, want %q", got, imageURL)
+	}
+	if got := plan.Scenes[0].Layers[1].Path; got != videoURL {
+		t.Errorf("video URL = %q, want %q", got, videoURL)
+	}
+	if got := plan.Scenes[0].Audio[0].Path; got != audioURL {
+		t.Errorf("audio URL = %q, want %q", got, audioURL)
+	}
+	if got := plan.Music.Path; got != musicURL {
+		t.Errorf("music URL = %q, want %q", got, musicURL)
+	}
+
+	commands, err := plan.Commands()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, source := range []string{imageURL, videoURL, audioURL, musicURL} {
+		if !commandContainsArgument(commands, source) {
+			t.Errorf("generated commands do not contain media URL %q:\n%v", source, commands)
+		}
+	}
+}
+
+func commandContainsArgument(commands [][]string, expected string) bool {
+	for _, command := range commands {
+		for _, argument := range command {
+			if argument == expected {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
 func TestCompileMediaAndCircleLayers(t *testing.T) {
 	value, err := project.Parse([]byte(`
 music:
