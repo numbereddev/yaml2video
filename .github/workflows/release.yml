@@ -1,0 +1,99 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: darwin
+            goarch: amd64
+            binary: yaml2video
+            archive: tar.gz
+          - goos: darwin
+            goarch: arm64
+            binary: yaml2video
+            archive: tar.gz
+          - goos: linux
+            goarch: amd64
+            binary: yaml2video
+            archive: tar.gz
+          - goos: linux
+            goarch: arm64
+            binary: yaml2video
+            archive: tar.gz
+          - goos: windows
+            goarch: amd64
+            binary: yaml2video.exe
+            archive: zip
+          - goos: windows
+            goarch: arm64
+            binary: yaml2video.exe
+            archive: zip
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.27.1"
+          cache: true
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          mkdir -p dist/build dist/release
+          go build -trimpath -ldflags="-s -w" -o "dist/build/${{ matrix.binary }}" .
+
+      - name: Package archive
+        env:
+          VERSION: ${{ github.event.release.tag_name }}
+          GOOS_NAME: ${{ matrix.goos }}
+          GOARCH_NAME: ${{ matrix.goarch }}
+          BINARY: ${{ matrix.binary }}
+          ARCHIVE: ${{ matrix.archive }}
+        run: |
+          if [ "$ARCHIVE" = "zip" ]; then
+            zip -j "dist/release/yaml2video_${VERSION}_${GOOS_NAME}_${GOARCH_NAME}.zip" "dist/build/$BINARY"
+          else
+            tar -C dist/build -czf "dist/release/yaml2video_${VERSION}_${GOOS_NAME}_${GOARCH_NAME}.tar.gz" "$BINARY"
+          fi
+
+      - name: Upload release archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: yaml2video-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/release/*
+          if-no-files-found: error
+
+  publish:
+    name: Attach release assets
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download release archives
+        uses: actions/download-artifact@v6
+        with:
+          pattern: yaml2video-*
+          path: dist
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: shasum -a 256 dist/* > dist/checksums.txt
+
+      - name: Upload archives and checksums to the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" dist/* --clobber
