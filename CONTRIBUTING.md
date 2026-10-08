@@ -27,8 +27,8 @@ gofmt -w .            # format changed Go source files
 Use dry-run mode to validate the repository examples without rendering media:
 
 ```sh
-go run . -n examples/project/example.yaml
-go run . -n -t examples/templates/appdemo-template.yaml examples/templates/appdemo-project.yaml
+go run ./src/cmd/yaml2video -n examples/project/example.yaml
+go run ./src/cmd/yaml2video -n -t examples/templates/appdemo-template.yaml examples/templates/appdemo-project.yaml
 ```
 
 `-n` validates the project and prints the planned FFmpeg commands. A normal render creates intermediate files under `.out/`; those files should not be committed.

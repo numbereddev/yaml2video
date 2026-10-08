@@ -5,7 +5,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/ondics/yaml2video/project"
+	"github.com/ondics/yaml2video/src/project"
 )
 
 const estimatedGlyphWidth = 0.4

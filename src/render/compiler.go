@@ -6,8 +6,13 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/ondics/yaml2video/project"
-	"github.com/ondics/yaml2video/types"
+	"encoding/json"
+	"os"
+	"strconv"
+	"strings"
+
+	"github.com/ondics/yaml2video/src/project"
+	"github.com/ondics/yaml2video/src/types"
 )
 
 const (
@@ -711,3 +716,568 @@ func compileTextBackground(background project.TextBackground) (*TextBackgroundPl
 		Radius:   background.Radius,
 	}, nil
 }
+
+// Package v2 loads and composes version 2 video and template documents.
+
+type obj = map[string]any
+
+func object(v any) obj {
+	x, _ := v.(map[string]any)
+	if x == nil {
+		return obj{}
+	}
+	return x
+}
+
+func str(v any) string  { s, _ := v.(string); return s }
+func num(v any) float64 { n, _ := number(v); return n }
+func integer(v any) int { return int(num(v)) }
+func flag(v any) bool   { return v == true }
+
+func duration(v any) (time.Duration, error) {
+	if v == nil {
+		return 0, nil
+	}
+	var seconds float64
+	if s, ok := v.(string); ok {
+		seconds, _ = strconv.ParseFloat(strings.TrimSuffix(s, "s"), 64)
+	} else {
+		seconds = num(v)
+	}
+	if seconds <= 0 || seconds > float64(math.MaxInt64)/float64(time.Second) {
+		return 0, fmt.Errorf("invalid duration %v", v)
+	}
+	return time.Duration(math.Round(seconds * float64(time.Second))), nil
+}
+
+func offset(v any) (time.Duration, error) {
+	if v == nil || v == json.Number("0") || v == "0s" {
+		return 0, nil
+	}
+	return duration(v)
+}
+
+func choose(values ...any) any {
+	for _, v := range values {
+		if v != nil {
+			return v
+		}
+	}
+	return nil
+}
+
+func path(base string, v any) (string, error) {
+	s := str(v)
+	if s == "" {
+		return "", nil
+	}
+	if strings.Contains(s, "://") {
+		return "", fmt.Errorf("unsupported media URI %q", s)
+	}
+	if !filepath.IsAbs(s) {
+		s = filepath.Join(base, s)
+	}
+
+	s = filepath.Clean(s)
+	f, err := os.Open(s)
+	if err != nil {
+		return "", fmt.Errorf("media %s: %w", s, err)
+	}
+	defer f.Close()
+
+	stat, err := f.Stat()
+	if err != nil {
+		return "", err
+	}
+	if !stat.Mode().IsRegular() {
+		return "", fmt.Errorf("media %s is not a regular file", s)
+	}
+
+	return s, nil
+}
+
+// Load validates both explicit documents and builds a render plan. Paths to
+// media are relative to videoPath. Work artifacts are placed in .yaml2video-v2.
+func Load(videoPath, templatePath string) (*Plan, error) {
+	v, e := document(videoPath, "video.schema.json")
+	if e != nil {
+		return nil, e
+	}
+	t, e := document(templatePath, "template.schema.json")
+	if e != nil {
+		return nil, e
+	}
+	if str(v["template"]) != str(t["template_id"]) {
+		return nil, fmt.Errorf("video template %q does not match template_id %q", v["template"], t["template_id"])
+	}
+	return compose(v, t, filepath.Dir(videoPath))
+}
+func compose(v, t obj, base string) (*Plan, error) {
+	format := object(t["format"])
+	defaults := object(t["defaults"])
+	theme := object(defaults["theme"])
+	timing := object(defaults["timing"])
+	typography := object(defaults["typography"])
+	audioDefaults := object(defaults["audio"])
+	layout := object(t["layout"])
+	content := object(v["content"])
+	assets := object(v["assets"])
+	p := &Plan{Video: VideoSpec{Width: integer(format["width"]), Height: integer(format["height"]), FPS: integer(format["fps"]), Background: str(theme["background"])}, WorkDir: filepath.Join(base, ".yaml2video-v2"), Output: filepath.Join(base, "output.mp4")}
+
+	logo, err := path(base, assets["logo"])
+	if err != nil {
+		return nil, err
+	}
+
+	sections := object(t["composition"])["sections"].([]any)
+
+	type boundary struct {
+		transition obj
+		index      int
+	}
+	var boundaries []boundary
+	ids := map[string]bool{}
+	sceneIDs := map[string]bool{}
+	hasSlides := false
+	for _, raw := range sections {
+		section := object(raw)
+		id := str(section["id"])
+		if ids[id] {
+			return nil, fmt.Errorf("duplicate section id %s", id)
+		}
+
+		ids[id] = true
+		role := str(section["role"])
+
+		var items []any
+		switch role {
+		case "intro", "outro":
+			if item := content[role]; item != nil {
+				items = []any{item}
+			}
+		case "slide":
+			hasSlides = true
+			items = content["slides"].([]any)
+		}
+		if role != "slide" && flag(section["repeat"]) {
+			return nil, fmt.Errorf("%s: repeat is only supported for slides", id)
+		}
+		for i, rawItem := range items {
+			item := object(rawItem)
+			name := id
+			if role == "slide" {
+				name = fmt.Sprintf("%s-%d", id, i+1)
+				if s := str(item["id"]); s != "" {
+					name = id + "-" + s
+				}
+			}
+
+			if sceneIDs[name] {
+				return nil, fmt.Errorf("duplicate scene id %q", name)
+			}
+			sceneIDs[name] = true
+
+			d, err := duration(choose(item["duration"], section["default_duration"], timing[role+"_duration"]))
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", name, err)
+			}
+
+			scene := ScenePlan{ID: name, Duration: d, Background: str(object(layout[role])["background"])}
+			l := object(layout[role])
+			addMedia := func(key string, asset any) error {
+				if asset == nil {
+					return nil
+				}
+				el := object(l[key])
+				if len(el) == 0 {
+					return fmt.Errorf("%s: %s has content but no layout", name, key)
+				}
+				if el["visible"] == false {
+					return nil
+				}
+				source, err := path(base, asset)
+				if err != nil {
+					return err
+				}
+				layer, err := mediaLayer(source, el, object(defaults["media"]), p.Video)
+				if key == "image" && role == "slide" {
+					layer.AltText = str(item["alt_text"])
+				}
+				if err != nil {
+					return fmt.Errorf("%s.%s: %w", name, key, err)
+				}
+				scene.Layers = append(scene.Layers, layer)
+				return nil
+			}
+
+			if (role == "intro" || role == "outro") && item["image"] != nil && l["image"] == nil {
+				source, err := path(base, item["image"])
+				if err != nil {
+					return nil, err
+				}
+				scene.Layers = append(scene.Layers, LayerPlan{Kind: "image", Path: source, Fit: str(choose(object(defaults["media"])["default_fit"], "cover")), X: 0, Y: 0, Width: p.Video.Width, Height: p.Video.Height, Opacity: 1})
+			}
+
+			if (role == "intro" || role == "outro") && l["image"] != nil {
+				if err = addMedia("image", item["image"]); err != nil {
+					return nil, err
+				}
+			} else if role == "slide" {
+				if err = addMedia("image", item["image"]); err != nil {
+					return nil, err
+				}
+			}
+
+			if logo != "" && l["logo"] != nil {
+				if err = addMedia("logo", assets["logo"]); err != nil {
+					return nil, err
+				}
+			}
+
+			alignments := map[int]string{}
+			keys := []string{"title", "subtitle", "label", "text", "tip", "index", "cta"}
+			for _, key := range keys {
+				value := str(item[key])
+				if key == "index" && role == "slide" {
+					value = fmt.Sprintf("%d / %d", i+1, len(items))
+				}
+				if value == "" || l[key] == nil {
+					continue
+				}
+				el := object(l[key])
+				if el["visible"] == false {
+					continue
+				}
+				layer, err := textLayer(value, key, el, typography, theme, p.Video)
+				if err != nil {
+					return nil, fmt.Errorf("%s.%s: %w", name, key, err)
+				}
+				alignments[len(scene.Layers)] = str(object(el["style"])["align"])
+				scene.Layers = append(scene.Layers, layer)
+			}
+
+			if role == "slide" && l["progress"] != nil {
+				if err := addProgress(&scene, object(l["progress"]), i+1, len(items), theme, p.Video); err != nil {
+					return nil, fmt.Errorf("%s.progress: %w", name, err)
+				}
+			}
+
+			track := object(item["audio"])
+			if len(track) > 0 {
+				a, err := audioLayer(track, audioDefaults, base, 0, d)
+				if err != nil {
+					return nil, fmt.Errorf("%s.audio: %w", name, err)
+				}
+				scene.Audio = append(scene.Audio, a)
+			}
+
+			if effects, ok := item["sound_effects"].([]any); ok {
+				for j, raw := range effects {
+					fx := object(raw)
+					at, err := offset(fx["at"])
+					if err != nil || at >= d {
+						return nil, fmt.Errorf("%s.sound_effects[%d]: offset outside scene", name, j)
+					}
+
+					a, err := audioLayer(fx, audioDefaults, base, at, d-at)
+					if err != nil {
+						return nil, fmt.Errorf("%s.sound_effects[%d]: %w", name, j, err)
+					}
+					a.SoundEffect = true
+
+					scene.Audio = append(scene.Audio, a)
+				}
+			}
+
+			scene.ASSPath = filepath.Join(p.WorkDir, "ass", fmt.Sprintf("scene-%04d.ass", len(p.Scenes)))
+			scene.ASS = v2ASSDocument(p.Video, scene, alignments)
+			scene.Output = filepath.Join(p.WorkDir, "scenes", fmt.Sprintf("scene-%04d.mkv", len(p.Scenes)))
+			p.Scenes = append(p.Scenes, scene)
+			tr := object(choose(section["transition_out"], timing["transition"]))
+			boundaries = append(boundaries, boundary{tr, len(p.Scenes) - 1})
+		}
+	}
+
+	if !hasSlides {
+		return nil, fmt.Errorf("composition must include a slide section")
+	}
+
+	if len(p.Scenes) == 0 {
+		return nil, fmt.Errorf("composition has no scenes")
+	}
+
+	if object(sections[len(sections)-1])["transition_out"] != nil {
+		return nil, fmt.Errorf("transition on final section")
+	}
+
+	for i, b := range boundaries {
+		if i == len(boundaries)-1 {
+			break
+		}
+
+		tr := b.transition
+		if str(tr["type"]) == "cut" {
+			continue
+		}
+
+		d, err := duration(tr["duration"])
+		if err != nil {
+			return nil, err
+		}
+
+		if d >= p.Scenes[b.index].Duration || d >= p.Scenes[b.index+1].Duration {
+			return nil, fmt.Errorf("transition exceeds adjacent scene duration")
+		}
+		p.Transitions = append(p.Transitions, BoundaryTransition{FromScene: b.index, Type: str(tr["type"]), Duration: d})
+	}
+
+	for i := range p.Scenes {
+		if i > 0 {
+			p.Scenes[i].Start = p.Scenes[i-1].Start + p.Scenes[i-1].Duration
+			for _, tr := range p.Transitions {
+				if tr.FromScene == i-1 {
+					p.Scenes[i].Start -= tr.Duration
+				}
+			}
+		}
+
+		p.Duration = p.Scenes[i].Start + p.Scenes[i].Duration
+	}
+
+	for i := range p.Transitions {
+		p.Transitions[i].Offset = p.Scenes[p.Transitions[i].FromScene+1].Start
+	}
+
+	if music := object(assets["music"]); len(music) > 0 {
+		source, err := path(base, music["path"])
+		if err != nil {
+			return nil, err
+		}
+
+		fadeIn, err := duration(choose(music["fade_in"], audioDefaults["fade_in"]))
+		if err != nil {
+			return nil, err
+		}
+
+		fadeOut, err := duration(choose(music["fade_out"], audioDefaults["fade_out"]))
+		if err != nil {
+			return nil, err
+		}
+		if fadeOut > p.Duration || fadeIn > p.Duration {
+			return nil, fmt.Errorf("music fade exceeds video duration")
+		}
+
+		volume := num(choose(music["volume"], audioDefaults["default_volume"], json.Number("1")))
+		p.Music = &MusicPlan{Path: source, Volume: volume, FadeIn: fadeIn, FadeOut: fadeOut, Normalize: audioDefaults["normalize"] != false}
+		if duck := object(audioDefaults["ducking"]); flag(duck["enabled"]) {
+			attack, err := duration(choose(duck["attack"], "0.15s"))
+			if err != nil {
+				return nil, fmt.Errorf("music ducking attack: %w", err)
+			}
+
+			release, err := duration(choose(duck["release"], "0.4s"))
+			if err != nil {
+				return nil, fmt.Errorf("music ducking release: %w", err)
+			}
+
+			p.Music.Ducking = &DuckingPlan{Enabled: true, Amount: num(choose(duck["amount"], json.Number("0.65"))), Attack: attack, Release: release}
+		}
+	}
+
+	return p, nil
+}
+
+func audioLayer(track, defaults obj, base string, at, remaining time.Duration) (AudioLayerPlan, error) {
+	source, err := path(base, track["path"])
+	if err != nil {
+		return AudioLayerPlan{}, err
+	}
+
+	fi, err := duration(choose(track["fade_in"], defaults["fade_in"]))
+	if err != nil {
+		return AudioLayerPlan{}, err
+	}
+
+	fo, err := duration(choose(track["fade_out"], defaults["fade_out"]))
+	if err != nil {
+		return AudioLayerPlan{}, err
+	}
+	if fi > remaining || fo > remaining {
+		return AudioLayerPlan{}, fmt.Errorf("audio fade exceeds remaining scene duration")
+	}
+
+	return AudioLayerPlan{Path: source, Volume: num(choose(track["volume"], defaults["default_volume"], json.Number("1"))), Offset: at, Duration: remaining, FadeIn: fi, FadeOut: fo}, nil
+}
+
+func bounds(el obj, video VideoSpec, w, h int) (int, int) {
+	place := object(el["placement"])
+	parts := strings.Split(str(place["anchor"]), "-")
+	anchor := str(place["anchor"])
+	x, y := 0, 0
+	if anchor == "center" {
+		x = (video.Width - w) / 2
+		y = (video.Height - h) / 2
+	} else {
+		switch parts[len(parts)-1] {
+		case "center":
+			x = (video.Width - w) / 2
+		case "right":
+			x = video.Width - w
+		}
+		switch parts[0] {
+		case "center":
+			y = (video.Height - h) / 2
+		case "bottom":
+			y = video.Height - h
+		}
+	}
+	return x + int(math.Round(num(place["offset_x"]))), y + int(math.Round(num(place["offset_y"])))
+}
+
+func effects(el obj, kind string) ([]EffectPlan, error) {
+	var result []EffectPlan
+	arr, _ := el["effects"].([]any)
+	for _, raw := range arr {
+		v := object(raw)
+		typ := str(v["type"])
+		text := typ == "text_shadow" || typ == "text_glow" || typ == "text_outline" || typ == "glass_panel"
+		image := typ == "pan_zoom" || typ == "color_filter" || typ == "vignette" || typ == "blur"
+		if text && kind != "text" || image && kind != "image" {
+			return nil, fmt.Errorf("effect %s is not applicable to %s", typ, kind)
+		}
+		if text && typ != "glass_panel" && v["color"] != nil && !v2ASSColorSupported(str(v["color"])) {
+			return nil, fmt.Errorf("effect %s color %q unsupported by ASS renderer", typ, v["color"])
+		}
+
+		if typ == "vignette" && str(v["color"]) != "" && str(v["color"]) != "#000000" && str(v["color"]) != "black" {
+			return nil, fmt.Errorf("colored vignette is unsupported by render.Plan")
+		}
+		fx := EffectPlan{Type: typ, Color: str(v["color"]), Opacity: num(choose(v["opacity"], jsonNumber(1))), OffsetX: num(v["offset_x"]), OffsetY: num(v["offset_y"]), Blur: num(v["blur"]), Width: num(v["width"]), FromScale: num(choose(v["from_scale"], jsonNumber(1))), ToScale: num(choose(v["to_scale"], jsonNumber(1))), FromAnchor: str(choose(v["from_anchor"], "center")), ToAnchor: str(choose(v["to_anchor"], "center")), Preset: str(v["preset"]), Intensity: num(choose(v["intensity"], jsonNumber(1))), Radius: num(v["radius"])}
+		if padding, ok := v["padding"].([]any); ok {
+			fx.PaddingX = num(padding[0])
+			fx.PaddingY = num(padding[1])
+		} else {
+			fx.PaddingX = num(v["padding"])
+			fx.PaddingY = fx.PaddingX
+		}
+		var e error
+		fx.FadeIn, e = duration(v["fade_in"])
+		if e != nil {
+			return nil, e
+		}
+		fx.FadeOut, e = duration(v["fade_out"])
+		if e != nil {
+			return nil, e
+		}
+		result = append(result, fx)
+	}
+	return result, nil
+}
+
+func mediaLayer(source string, el, defaults obj, video VideoSpec) (LayerPlan, error) {
+	w := int(math.Round(float64(video.Width) * ratio(el["max_width_ratio"])))
+	h := int(math.Round(float64(video.Height) * ratio(el["max_height_ratio"])))
+	if w < 1 || h < 1 {
+		return LayerPlan{}, fmt.Errorf("media bounds empty")
+	}
+
+	x, y := bounds(el, video, w, h)
+	fx, e := effects(el, "image")
+	if e != nil {
+		return LayerPlan{}, e
+	}
+	shape := str(el["shape"])
+
+	if shape == "" {
+		shape = "rectangle"
+	}
+	return LayerPlan{Kind: "image", Path: source, Fit: str(choose(el["fit"], defaults["default_fit"], "cover")), Anchor: str(object(el["placement"])["anchor"]), Shape: shape, X: x, Y: y, Width: w, Height: h, Opacity: 1, Effects: fx}, nil
+}
+
+func textLayer(value, key string, el, typography, theme obj, video VideoSpec) (LayerPlan, error) {
+	style := object(el["style"])
+	size := integer(choose(style["font_size"], typography["body_size"], jsonNumber(32)))
+	if key == "title" {
+		size = integer(choose(style["font_size"], typography["title_size"], typography["body_size"], jsonNumber(48)))
+	}
+	if key == "tip" {
+		size = integer(choose(style["font_size"], typography["tip_size"], typography["body_size"], jsonNumber(28)))
+	}
+	if size <= 0 {
+		return LayerPlan{}, fmt.Errorf("no font size configured")
+	}
+	if spacing := num(style["line_spacing"]); spacing != 0 {
+		return LayerPlan{}, fmt.Errorf("line_spacing requires render.Plan support")
+	}
+
+	width := int(float64(video.Width) * ratio(el["max_width_ratio"]))
+	if width < 1 {
+		return LayerPlan{}, fmt.Errorf("text width empty")
+	}
+
+	maxChars := max(1, int(float64(width)/(float64(size)*0.4)))
+	words := strings.Fields(value)
+	var lines []string
+	line := ""
+	for _, word := range words {
+		if line != "" && len([]rune(line))+1+len([]rune(word)) > maxChars {
+			lines = append(lines, line)
+			line = ""
+		}
+		if line != "" {
+			line += " "
+		}
+		line += word
+	}
+	if line != "" {
+		lines = append(lines, line)
+	}
+	if maxLines := integer(el["max_lines"]); maxLines > 0 && len(lines) > maxLines {
+		return LayerPlan{}, fmt.Errorf("text exceeds max_lines %d", maxLines)
+	}
+
+	height := int(math.Ceil(float64(len(lines)*size) * 1.2))
+	x, y := bounds(el, video, width, height)
+	fx, err := effects(el, "text")
+	if err != nil {
+		return LayerPlan{}, err
+	}
+
+	color := str(choose(style["color"], theme["text_color"]))
+	if !v2ASSColorSupported(color) {
+		return LayerPlan{}, fmt.Errorf("text color %q is unsupported by ASS renderer", color)
+	}
+
+	font := str(choose(style["font_family"], typography["font_family"], "Arial"))
+	weight := str(style["weight"])
+	if weight == "medium" {
+		return LayerPlan{}, fmt.Errorf("medium font weight requires render.Plan support")
+	}
+
+	return LayerPlan{Kind: "text", X: x, Y: y, Width: width, Height: height, WrapWidth: width, Font: font, FontSize: size, Color: color, Opacity: 1, Spans: []TextSpan{{Content: strings.Join(lines, "\n"), Color: color, Bold: weight == "bold"}}, Effects: fx}, nil
+}
+
+func ratio(v any) float64 {
+	if v == nil {
+		return 1
+	}
+	return num(v)
+}
+
+func addProgress(scene *ScenePlan, el obj, current, total int, theme obj, video VideoSpec) error {
+	if el["visible"] == false {
+		return nil
+	}
+	w := int(float64(video.Width) * ratio(choose(el["width_ratio"], jsonNumber(0.8))))
+	h := int(math.Round(num(choose(el["thickness"], jsonNumber(8)))))
+	if w < 1 || h < 1 {
+		return fmt.Errorf("progress dimensions empty")
+	}
+	x, y := bounds(el, video, w, h)
+	background := str(choose(el["background_color"], theme["muted_color"], theme["background"]))
+	color := str(choose(el["color"], theme["accent_color"]))
+	scene.Layers = append(scene.Layers, LayerPlan{Kind: "rectangle", X: x, Y: y, Width: w, Height: h, Color: background, Opacity: 1}, LayerPlan{Kind: "rectangle", X: x, Y: y, Width: max(1, int(math.Round(float64(w)*float64(current)/float64(total)))), Height: h, Color: color, Opacity: 1})
+	return nil
+}
+
+func jsonNumber(n float64) any { return n }

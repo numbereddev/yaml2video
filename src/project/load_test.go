@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ondics/yaml2video/project"
-	"github.com/ondics/yaml2video/render"
+	"github.com/ondics/yaml2video/src/project"
+	"github.com/ondics/yaml2video/src/render"
 )
 
 func TestLoadComposesSlidesFromMultipleTemplates(t *testing.T) {

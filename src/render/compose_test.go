@@ -1,4 +1,4 @@
-package v2
+package render
 
 import (
 	"os"
@@ -6,14 +6,12 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/ondics/yaml2video/render"
 )
 
 func example(t *testing.T, kind string) (string, string) {
 	t.Helper()
 	dir := t.TempDir()
-	src := filepath.Join("..", "examples", kind)
+	src := filepath.Join("..", "..", "examples", kind)
 	for _, file := range []string{"video-" + kind + ".yaml", "template-" + kind + ".yaml"} {
 		raw, err := os.ReadFile(filepath.Join(src, file))
 		if err != nil {
@@ -86,7 +84,7 @@ func TestSchemaRejectsUnknownAndWrongTypes(t *testing.T) {
 }
 
 func TestMediaPlacementAnchors(t *testing.T) {
-	canvas := render.VideoSpec{Width: 1080, Height: 1920}
+	canvas := VideoSpec{Width: 1080, Height: 1920}
 	for _, tc := range []struct {
 		anchor string
 		x, y   int

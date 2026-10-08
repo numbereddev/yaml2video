@@ -2,7 +2,7 @@
 
 All notable changes to the project are documented here.
 
-## [v2] - Unreleased
+## v2
 
 ### Added
 
@@ -25,15 +25,6 @@ All notable changes to the project are documented here.
 - Added multiple sound effects per section with relative start offsets.
 - Added template-level audio normalization and optional background-music ducking for foreground audio.
 
-### Documentation
+### Breaking changes
 
-- Added [`docs/user-guide.md`](docs/user-guide.md) for authoring `video.yaml` and `template.yaml` files.
-- Added [`docs/video2yaml-spec.md`](docs/video2yaml-spec.md) as the normative human-readable format specification.
-- Extended [`docs/renderer-spec.md`](docs/renderer-spec.md) with timeline, effect, audio, capability, and dry-run requirements.
-- Documented the separation between semantic YAML effects and renderer-specific FFmpeg implementation details.
-
-### Compatibility and scope
-
-- The v2 format remains renderer-independent and does not expose FFmpeg filter graphs, codec arguments, or container settings.
-- The initial profile targets short, attractive social-media videos based on images, text, transitions, and audio.
-- The renderer must perform semantic validation in addition to JSON Schema validation, including media availability, timing, effect applicability, and FFmpeg capability checks.
+- Old schemas and templates are no longer compatible with v2.

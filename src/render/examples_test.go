@@ -1,12 +1,10 @@
-package v2
+package render
 
 import (
 	"fmt"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/ondics/yaml2video/render"
 )
 
 func TestExamplePlans(t *testing.T) {
@@ -79,16 +77,16 @@ func TestExamplePlans(t *testing.T) {
 	}
 }
 
-func image(scene render.ScenePlan) (render.LayerPlan, bool) {
+func exampleImage(scene ScenePlan) (LayerPlan, bool) {
 	for _, l := range scene.Layers {
 		if l.Kind == "image" && strings.Contains(l.Path, "assets/") && strings.Contains(l.Path, ".png") && l.Shape != "rectangle" {
 			return l, true
 		}
 	}
-	return render.LayerPlan{}, false
+	return LayerPlan{}, false
 }
 
-func assertNormal(t *testing.T, p *render.Plan, commands [][]string) {
+func assertNormal(t *testing.T, p *Plan, commands [][]string) {
 	t.Helper()
 	if p.Music.Volume != .35 || p.Music.FadeIn != 300*time.Millisecond {
 		t.Errorf("normal music overrides: %+v", p.Music)
@@ -96,7 +94,7 @@ func assertNormal(t *testing.T, p *render.Plan, commands [][]string) {
 	if p.Scenes[0].Layers[0].Width != p.Video.Width {
 		t.Error("intro image not composed as background")
 	}
-	layer, ok := image(p.Scenes[1])
+	layer, ok := exampleImage(p.Scenes[1])
 	if !ok || layer.Shape != "rounded-rectangle" || layer.AltText == "" {
 		t.Errorf("normal slide image metadata: %+v", layer)
 	}
@@ -122,7 +120,7 @@ func assertNormal(t *testing.T, p *render.Plan, commands [][]string) {
 	}
 }
 
-func assertComplex(t *testing.T, p *render.Plan, commands [][]string) {
+func assertComplex(t *testing.T, p *Plan, commands [][]string) {
 	t.Helper()
 	if p.Music.Ducking == nil || !p.Music.Ducking.Enabled || p.Music.Ducking.Amount != .55 || !p.Music.Normalize {
 		t.Errorf("music ducking/normalize: %+v", p.Music)
@@ -131,7 +129,7 @@ func assertComplex(t *testing.T, p *render.Plan, commands [][]string) {
 		t.Errorf("music fade: %+v", p.Music)
 	}
 	for i := 1; i <= 6; i++ {
-		layer, ok := image(p.Scenes[i])
+		layer, ok := exampleImage(p.Scenes[i])
 		if !ok || layer.Shape != "rounded-rectangle" || layer.AltText == "" {
 			t.Errorf("slide %d image/accessibility: %+v", i, layer)
 		}

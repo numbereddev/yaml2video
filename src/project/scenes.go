@@ -5,7 +5,7 @@ import (
 
 	"github.com/goccy/go-yaml"
 	"github.com/goccy/go-yaml/ast"
-	"github.com/ondics/yaml2video/types"
+	"github.com/ondics/yaml2video/src/types"
 )
 
 type Scene struct {

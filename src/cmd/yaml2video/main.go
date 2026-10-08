@@ -8,14 +8,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ondics/yaml2video/render"
-	v2 "github.com/ondics/yaml2video/v2"
+	"github.com/ondics/yaml2video/src/render"
 	ffmpeg "github.com/u2takey/ffmpeg-go"
 )
 
 func main() {
 	videoPath, options := parseArgs()
-	plan, err := v2.Load(videoPath, options.templatePath)
+	plan, err := render.Load(videoPath, options.templatePath)
 	if err != nil {
 		fail(err)
 	}

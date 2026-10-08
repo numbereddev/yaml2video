@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ondics/yaml2video/project"
+	"github.com/ondics/yaml2video/src/project"
 )
 
 func TestRejectsCanvasRelativeCustomScaling(t *testing.T) {

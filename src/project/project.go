@@ -3,8 +3,8 @@ package project
 
 import (
 	"github.com/goccy/go-yaml"
-	"github.com/ondics/yaml2video/template"
-	"github.com/ondics/yaml2video/types"
+	"github.com/ondics/yaml2video/src/template"
+	"github.com/ondics/yaml2video/src/types"
 )
 
 // LoadOptions controls how a project is composed before it is parsed.

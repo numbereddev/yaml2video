@@ -3,7 +3,7 @@ package render
 import (
 	"strings"
 
-	"github.com/ondics/yaml2video/types"
+	"github.com/ondics/yaml2video/src/types"
 )
 
 func colorString(color types.Color) string {
