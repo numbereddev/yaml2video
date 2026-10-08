@@ -32,6 +32,7 @@ func bounds(el obj, video render.VideoSpec, w, h int) (int, int) {
 	}
 	return x + int(math.Round(num(place["offset_x"]))), y + int(math.Round(num(place["offset_y"])))
 }
+
 func effects(el obj, kind string) ([]render.EffectPlan, error) {
 	var result []render.EffectPlan
 	arr, _ := el["effects"].([]any)
@@ -177,4 +178,5 @@ func addProgress(scene *render.ScenePlan, el obj, current, total int, theme obj,
 	scene.Layers = append(scene.Layers, render.LayerPlan{Kind: "rectangle", X: x, Y: y, Width: w, Height: h, Color: background, Opacity: 1}, render.LayerPlan{Kind: "rectangle", X: x, Y: y, Width: max(1, int(math.Round(float64(w)*float64(current)/float64(total)))), Height: h, Color: color, Opacity: 1})
 	return nil
 }
+
 func jsonNumber(n float64) any { return n }
