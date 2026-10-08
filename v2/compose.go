@@ -28,6 +28,7 @@ func str(v any) string  { s, _ := v.(string); return s }
 func num(v any) float64 { n, _ := number(v); return n }
 func integer(v any) int { return int(num(v)) }
 func flag(v any) bool   { return v == true }
+
 func duration(v any) (time.Duration, error) {
 	if v == nil {
 		return 0, nil

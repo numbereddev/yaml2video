@@ -47,15 +47,18 @@ func (p *Plan) validateRenderPlan() error {
 		if tr.FromScene < 0 || tr.FromScene >= len(p.Scenes)-1 {
 			return fmt.Errorf("transition: invalid scene index %d", tr.FromScene)
 		}
+
 		if tr.Type == "cut" {
 			if tr.Duration != 0 {
 				return fmt.Errorf("cut transition must have zero duration")
 			}
 			continue
 		}
+
 		if _, ok := transitions[tr.Type]; !ok {
 			return fmt.Errorf("unsupported scene transition %q", tr.Type)
 		}
+
 		if tr.Duration <= 0 || tr.Duration > p.Scenes[tr.FromScene].Duration || tr.Duration > p.Scenes[tr.FromScene+1].Duration {
 			return fmt.Errorf("transition %q must fit within both scenes", tr.Type)
 		}
@@ -65,6 +68,7 @@ func (p *Plan) validateRenderPlan() error {
 		if err := validateFades(p.Music.FadeIn, p.Music.FadeOut, p.Duration); err != nil {
 			return fmt.Errorf("music: %w", err)
 		}
+
 		if d := p.Music.Ducking; d != nil && d.Enabled {
 			if d.Amount < 0 || d.Amount > 1 || d.Attack < 0 || d.Release < 0 {
 				return fmt.Errorf("music ducking: invalid amount, attack, or release")
