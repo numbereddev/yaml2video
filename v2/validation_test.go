@@ -23,12 +23,12 @@ func TestSchemaRejectsTemplateUnknownAndMissingRequired(t *testing.T) {
 func TestSoundEffectAndProgress(t *testing.T) {
 	v, tmpl := example(t, "simple")
 	raw, _ := os.ReadFile(v)
-	modified := strings.Replace(string(raw), "      duration: 3s\n", "      duration: 3s\n      sound_effects:\n        - path: assets/schulterkreisen.png\n          at: 1s\n          volume: 0.4\n", 1)
+	modified := strings.Replace(string(raw), "          duration: 3s\n", "          duration: 3s\n          sound_effects:\n              - path: assets/schulterkreisen.png\n                at: 1s\n                volume: 0.4\n", 1)
 	if err := os.WriteFile(v, []byte(modified), 0600); err != nil {
 		t.Fatal(err)
 	}
 	raw, _ = os.ReadFile(tmpl)
-	modified = strings.Replace(string(raw), "  outro:\n", "    progress:\n      placement:\n        anchor: bottom-center\n      width_ratio: 0.5\n      thickness: 6\n  outro:\n", 1)
+	modified = strings.Replace(string(raw), "    outro:\n", "        progress:\n            placement:\n                anchor: bottom-center\n            width_ratio: 0.5\n            thickness: 6\n    outro:\n", 1)
 	if err := os.WriteFile(tmpl, []byte(modified), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -98,9 +98,9 @@ func TestRejectsExtraYAMLDocuments(t *testing.T) {
 
 func TestNestedSchemaAndConditionalSectionRules(t *testing.T) {
 	for _, tc := range []struct{ name, old, replacement string }{
-		{"effect extra property", "        anchor: center\n      style:", "        anchor: center\n      effects:\n        - type: blur\n          bogus: true\n      style:"},
-		{"invalid slide source", "      source: content.slides", "      source: content.intro"},
-		{"invalid duration type", "    slide_duration: 3s", "    slide_duration: true"},
+		{"effect extra property", "                anchor: center\n            style:", "                anchor: center\n            effects:\n                - type: blur\n                  bogus: true\n            style:"},
+		{"invalid slide source", "          source: content.slides", "          source: content.intro"},
+		{"invalid duration type", "        slide_duration: 3s", "        slide_duration: true"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			v, tmpl := example(t, "simple")
@@ -125,7 +125,7 @@ func TestNestedSchemaAndConditionalSectionRules(t *testing.T) {
 func TestInvalidEffectApplicability(t *testing.T) {
 	v, tmpl := example(t, "simple")
 	raw, _ := os.ReadFile(tmpl)
-	modified := strings.Replace(string(raw), "      max_lines: 3\n", "      effects:\n        - type: pan_zoom\n      max_lines: 3\n", 1)
+	modified := strings.Replace(string(raw), "            max_lines: 3\n", "            effects:\n                - type: pan_zoom\n            max_lines: 3\n", 1)
 	if err := os.WriteFile(tmpl, []byte(modified), 0600); err != nil {
 		t.Fatal(err)
 	}

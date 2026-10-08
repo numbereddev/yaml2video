@@ -35,10 +35,49 @@ func TestV2GraphIncludesEffectsAudioAndTransition(t *testing.T) {
 			t.Errorf("scene missing %q: %s", part, scene)
 		}
 	}
-	for _, part := range []string{"transition=wipeleft", "adelay", "delays=500", "afade", "areverse", "loudnorm", "sidechaincompress", "asplit", "amix"} {
+
+	for _, part := range []string{"transition=wipeleft", "adelay", "delays=500", "afade", "loudnorm", "sidechaincompress", "asplit", "amix"} {
 		if !strings.Contains(final, part) {
 			t.Errorf("final missing %q: %s", part, final)
 		}
+	}
+}
+
+func TestContainedMediaFollowsEveryAnchor(t *testing.T) {
+	for _, tc := range []struct{ anchor, x, y string }{
+		{"top-left", "0", "0"}, {"top-center", "(ow-iw)/2", "0"}, {"top-right", "ow-iw", "0"},
+		{"center-left", "0", "(oh-ih)/2"}, {"center", "(ow-iw)/2", "(oh-ih)/2"}, {"center-right", "ow-iw", "(oh-ih)/2"},
+		{"bottom-left", "0", "oh-ih"}, {"bottom-center", "(ow-iw)/2", "oh-ih"}, {"bottom-right", "ow-iw", "oh-ih"},
+	} {
+		t.Run(tc.anchor, func(t *testing.T) {
+			p := testV2Plan()
+			layer := &p.Scenes[0].Layers[0]
+			layer.Fit, layer.Anchor = "contain", tc.anchor
+			commands, err := p.Commands()
+			if err != nil {
+				t.Fatal(err)
+			}
+			filter := strings.Join(commands[0], " ")
+			if want := "pad=200:100:" + tc.x + ":" + tc.y + ":color=black@0"; !strings.Contains(filter, want) {
+				t.Errorf("expected %s in %s", want, filter)
+			}
+			if !strings.Contains(filter, "format=rgba") {
+				t.Error("padding must preserve transparency")
+			}
+		})
+	}
+}
+
+func TestContainFitUsesEvenScaleWithinOddBounds(t *testing.T) {
+	p := testV2Plan()
+	p.Scenes[0].Layers[0].Fit = "contain"
+	p.Scenes[0].Layers[0].Width = 259
+	commands, err := p.Commands()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(commands[0], " "), "force_divisible_by=2") {
+		t.Fatal("contain scale must not round beyond the pad bounds")
 	}
 }
 

@@ -210,9 +210,26 @@ func fitLayerStream(input *ffmpeg.Stream, layer LayerPlan) *ffmpeg.Stream {
 			Filter("crop", ffmpeg.Args{width, height})
 	}
 
+	padX, padY := containPadding(layer.Anchor)
 	return input.
-		Filter("scale", ffmpeg.Args{width, height, "force_original_aspect_ratio=decrease"}).
-		Filter("pad", ffmpeg.Args{width, height, "(ow-iw)/2", "(oh-ih)/2", "color=black@0"})
+		Filter("scale", ffmpeg.Args{width, height, "force_original_aspect_ratio=decrease:force_divisible_by=2"}).
+		Filter("format", ffmpeg.Args{"rgba"}).
+		Filter("pad", ffmpeg.Args{width, height, padX, padY, "color=black@0"})
+}
+
+func containPadding(anchor string) (string, string) {
+	x, y := "(ow-iw)/2", "(oh-ih)/2"
+	if strings.HasSuffix(anchor, "-left") {
+		x = "0"
+	} else if strings.HasSuffix(anchor, "-right") {
+		x = "ow-iw"
+	}
+	if strings.HasPrefix(anchor, "top-") {
+		y = "0"
+	} else if strings.HasPrefix(anchor, "bottom-") {
+		y = "oh-ih"
+	}
+	return x, y
 }
 
 func mediaEOFAction(layer LayerPlan) string {
@@ -431,11 +448,9 @@ func audioLayerTrack(scene ScenePlan, layer AudioLayerPlan) *ffmpeg.Stream {
 	}
 
 	if layer.FadeOut > 0 {
-		// The input may end before its planned duration. Reverse so the fade
-		// always applies to the actual end of the audible clip.
-		input = input.Filter("areverse", nil).
-			Filter("afade", nil, ffmpeg.KwArgs{"t": "in", "st": 0, "d": ffTime(layer.FadeOut)}).
-			Filter("areverse", nil)
+		input = input.Filter("afade", nil, ffmpeg.KwArgs{
+			"t": "out", "st": ffTime(duration - layer.FadeOut), "d": ffTime(layer.FadeOut),
+		})
 	}
 
 	return input.Filter("adelay", nil, ffmpeg.KwArgs{"delays": (scene.Start + layer.Offset).Milliseconds(), "all": 1}).

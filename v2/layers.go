@@ -89,7 +89,7 @@ func mediaLayer(source string, el, defaults obj, video render.VideoSpec) (render
 	if shape == "" {
 		shape = "rectangle"
 	}
-	return render.LayerPlan{Kind: "image", Path: source, Fit: str(choose(el["fit"], defaults["default_fit"], "cover")), Shape: shape, X: x, Y: y, Width: w, Height: h, Opacity: 1, Effects: fx}, nil
+	return render.LayerPlan{Kind: "image", Path: source, Fit: str(choose(el["fit"], defaults["default_fit"], "cover")), Anchor: str(object(el["placement"])["anchor"]), Shape: shape, X: x, Y: y, Width: w, Height: h, Opacity: 1, Effects: fx}, nil
 }
 
 func textLayer(value, key string, el, typography, theme obj, video render.VideoSpec) (render.LayerPlan, error) {

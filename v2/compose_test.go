@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ondics/yaml2video/render"
 )
 
 func example(t *testing.T, kind string) (string, string) {
@@ -80,6 +82,29 @@ func TestSchemaRejectsUnknownAndWrongTypes(t *testing.T) {
 		if _, err = Load(v, tmpl); err == nil {
 			t.Errorf("accepted %s", change)
 		}
+	}
+}
+
+func TestMediaPlacementAnchors(t *testing.T) {
+	canvas := render.VideoSpec{Width: 1080, Height: 1920}
+	for _, tc := range []struct {
+		anchor string
+		x, y   int
+	}{
+		{"top-left", 64, 80}, {"top-center", 496, 80}, {"top-right", 928, 80},
+		{"center-left", 64, 848}, {"center", 496, 848}, {"center-right", 928, 848},
+		{"bottom-left", 64, 1616}, {"bottom-center", 496, 1616}, {"bottom-right", 928, 1616},
+	} {
+		t.Run(tc.anchor, func(t *testing.T) {
+			el := obj{"placement": obj{"anchor": tc.anchor, "offset_x": float64(64), "offset_y": float64(80)}, "max_width_ratio": float64(.2), "max_height_ratio": float64(.2), "fit": "contain"}
+			layer, err := mediaLayer("logo.png", el, obj{}, canvas)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if layer.X != tc.x || layer.Y != tc.y || layer.Anchor != tc.anchor {
+				t.Errorf("got (%d, %d, %q), want (%d, %d, %q)", layer.X, layer.Y, layer.Anchor, tc.x, tc.y, tc.anchor)
+			}
+		})
 	}
 }
 

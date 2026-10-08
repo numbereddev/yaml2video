@@ -44,6 +44,9 @@ type LayerPlan struct {
 	Kind string
 	Path string
 	Fit  string
+	// Anchor aligns contained media within its maximum-width/height box.
+	// Empty retains centered positioning for plans without a placement anchor.
+	Anchor string
 
 	X      int
 	Y      int
