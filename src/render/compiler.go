@@ -803,15 +803,39 @@ func Load(videoPath, templatePath string) (*Plan, error) {
 	if e != nil {
 		return nil, e
 	}
+
 	t, e := document(templatePath, "template.schema.json")
 	if e != nil {
 		return nil, e
 	}
+	return loadDocuments(v, t, filepath.Dir(videoPath))
+}
+
+// LoadBytes validates video and template YAML bytes and builds a render plan.
+// Media paths are relative to baseDir. Work artifacts are placed in .yaml2video-v2.
+// The YAML documents are not read from disk; schemas and media still use the filesystem.
+func LoadBytes(videoData, templateData []byte, baseDir string) (*Plan, error) {
+	v, err := documentBytes(videoData, "video", "video.schema.json")
+	if err != nil {
+		return nil, err
+	}
+
+	t, err := documentBytes(templateData, "template", "template.schema.json")
+	if err != nil {
+		return nil, err
+	}
+
+	return loadDocuments(v, t, baseDir)
+}
+
+func loadDocuments(v, t obj, base string) (*Plan, error) {
 	if str(v["template"]) != str(t["template_id"]) {
 		return nil, fmt.Errorf("video template %q does not match template_id %q", v["template"], t["template_id"])
 	}
-	return compose(v, t, filepath.Dir(videoPath))
+
+	return compose(v, t, base)
 }
+
 func compose(v, t obj, base string) (*Plan, error) {
 	format := object(t["format"])
 	defaults := object(t["defaults"])

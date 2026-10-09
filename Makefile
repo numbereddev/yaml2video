@@ -5,22 +5,28 @@ DOCKER_ARGS ?= $(ARGS)
 
 export DOCKER_IMAGE
 
-.PHONY: run build install test docker-build docker-run
+.PHONY: help up run build install test docker-build docker-run
 
-run:
-	@$(COMPOSE) run --rm --build development run ./src/cmd/yaml2video $(ARGS)
+help: ## Show this help.
+	@sed -ne '/@sed/!s/## //p' $(MAKEFILE_LIST)
 
-build:
-	@$(COMPOSE) run --rm --build development build ./src/cmd/yaml2video
+up: ## Start the serving stack.
+	 @$(COMPOSE) -f docker-compose.serve.yaml up
 
-install:
-	@$(COMPOSE) run --rm --build development install ./src/cmd/yaml2video
+run: ## Run yaml2video with ARGS in the development container.
+	 @$(COMPOSE) -f docker-compose.dev.yaml run --rm --build development run ./src/cmd/yaml2video $(ARGS)
 
-test:
-	@$(COMPOSE) run --rm --build development test ./...
+build: ## Build yaml2video in the development container.
+	 @$(COMPOSE) -f docker-compose.dev.yaml run --rm --build development build ./src/cmd/yaml2video
 
-docker-build:
-	$(COMPOSE) build yaml2video
+install: ## Install yaml2video in the development container.
+	 @$(COMPOSE) -f docker-compose.dev.yaml run --rm --build development install ./src/cmd/yaml2video
 
-docker-run:
-	$(COMPOSE) run --rm --build yaml2video $(DOCKER_ARGS)
+test: ## Run all Go tests in the development container.
+	 @$(COMPOSE) -f docker-compose.dev.yamlrun --rm --build development test ./...
+
+docker-build: ## Build the yaml2video Docker image.
+	 $(COMPOSE) build yaml2video
+
+docker-run: ## Run the yaml2video Docker image with DOCKER_ARGS.
+	 $(COMPOSE) run --rm --build yaml2video $(DOCKER_ARGS)

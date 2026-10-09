@@ -109,6 +109,10 @@ func document(path, schemaName string) (map[string]any, error) {
 		return nil, err
 	}
 
+	return documentBytes(raw, path, schemaName)
+}
+
+func documentBytes(raw []byte, path, schemaName string) (map[string]any, error) {
 	parsed, err := parser.ParseBytes(raw, 0)
 	if err != nil {
 		return nil, fmt.Errorf("%s: YAML: %w", path, err)
