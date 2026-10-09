@@ -4,16 +4,31 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/ondics/yaml2video/src/api"
 	"github.com/ondics/yaml2video/src/render"
 	ffmpeg "github.com/u2takey/ffmpeg-go"
 )
 
+const PORT = 8080
+
 func main() {
 	videoPath, options := parseArgs()
+
+	// If we serve the API, continue with this instead.
+	if options.serveApi {
+		router := api.NewRouter()
+		port := fmt.Sprintf(":%d", PORT)
+		log.Printf("HTTP server listening to %s", port)
+		log.Fatal(http.ListenAndServe(port, router))
+		return
+	}
+
 	plan, err := render.Load(videoPath, options.templatePath)
 	if err != nil {
 		fail(err)
@@ -54,6 +69,7 @@ type cliOptions struct {
 	render       render.Options
 	templatePath string
 	dryRun       bool
+	serveApi     bool
 }
 
 func parseArgs() (string, cliOptions) {
@@ -61,6 +77,14 @@ func parseArgs() (string, cliOptions) {
 	if len(args) == 0 {
 		usage()
 		os.Exit(2)
+	}
+
+	for i := range args {
+		arg := args[i]
+		if arg != "serve" {
+			continue
+		}
+		return "", cliOptions{serveApi: true}
 	}
 
 	var videoPath string
@@ -92,6 +116,7 @@ func parseArgs() (string, cliOptions) {
 		usage()
 		os.Exit(2)
 	}
+
 	return videoPath, cliOptions{
 		render:       render.Options{WorkDir: *workDir, Output: *output},
 		templatePath: *templatePath,
@@ -134,18 +159,19 @@ func printSummary(projectPath string, plan *render.Plan) {
 }
 
 func shellArgs(args []string) string {
-	result := ""
+	var result strings.Builder
 	for i, arg := range args {
 		if i != 0 {
-			result += " "
+			result.WriteString(" ")
 		}
-		result += fmt.Sprintf("%q", arg)
+		fmt.Fprintf(&result, "%q", arg)
 	}
-	return result
+	return result.String()
 }
 
 func fail(err error) { fmt.Fprintln(os.Stderr, "yaml2video:", err); os.Exit(1) }
 func usage() {
 	fmt.Fprintln(os.Stderr, "usage: yaml2video [-n] -t template.yaml [-work-dir dir] [-o output.mp4] video.yaml")
 	fmt.Fprintln(os.Stderr, "       yaml2video video.yaml [-n] -t template.yaml [-work-dir dir] [-o output.mp4]")
+	fmt.Fprintln(os.Stderr, "       yaml2video serve")
 }

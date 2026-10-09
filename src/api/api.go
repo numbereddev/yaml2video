@@ -2,12 +2,14 @@ package api
 
 import "net/http"
 
-func NewRouter() {
+func NewRouter() *http.ServeMux {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("POST /", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("Hello, World!"))
+		if _, err := w.Write([]byte("Hello, World!")); err != nil {
+			panic(err)
+		}
 	})
 
-	http.ListenAndServe(":8080", mux)
+	return mux
 }
