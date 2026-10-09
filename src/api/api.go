@@ -2,8 +2,9 @@ package api
 
 import (
 	"encoding/json"
-	"log"
+	"fmt"
 	"net/http"
+	"time"
 )
 
 func NewRouter() http.Handler {
@@ -14,17 +15,22 @@ func NewRouter() http.Handler {
 			Test string `json:"test"`
 		}
 
+		// Create event stream
+		w.Header().Set("X-Accel-Buffering", "no")
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.WriteHeader(http.StatusOK)
+
 		decoder := json.NewDecoder(r.Body)
 		if err := decoder.Decode(&body); err != nil {
 			panic(err)
 		}
 
-		log.Printf("Input: %v", body)
-
-		panic("Not implemented")
-		// if _, err := w.Write([]byte("Hello, World!")); err != nil {
-		// 	panic(err)
-		// }
+		for range 5 {
+			WriteMust(w, "event: echo\n")
+			WriteMust(w, fmt.Sprintf("data: %s\n\n", body.Test))
+			time.Sleep(500 * time.Millisecond)
+		}
 	})
 
 	return Chain(mux, Recover)
