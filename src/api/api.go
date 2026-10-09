@@ -1,15 +1,31 @@
 package api
 
-import "net/http"
+import (
+	"encoding/json"
+	"log"
+	"net/http"
+)
 
-func NewRouter() *http.ServeMux {
+func NewRouter() http.Handler {
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("POST /", func(w http.ResponseWriter, r *http.Request) {
-		if _, err := w.Write([]byte("Hello, World!")); err != nil {
+	mux.HandleFunc("POST /render", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Test string `json:"test"`
+		}
+
+		decoder := json.NewDecoder(r.Body)
+		if err := decoder.Decode(&body); err != nil {
 			panic(err)
 		}
+
+		log.Printf("Input: %v", body)
+
+		panic("Not implemented")
+		// if _, err := w.Write([]byte("Hello, World!")); err != nil {
+		// 	panic(err)
+		// }
 	})
 
-	return mux
+	return Chain(mux, Recover)
 }
