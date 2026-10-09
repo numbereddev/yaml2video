@@ -4,6 +4,18 @@ Thanks for contributing. Small, focused changes with tests and documentation mak
 
 ## Development setup
 
+For containerized development, install Docker with Compose and clone the repository. All Make targets run inside containers; no local Go or FFmpeg installation is needed:
+
+```sh
+make test
+make build
+make run ARGS='-n -t examples/simple/template-simple.yaml examples/simple/video-simple.yaml'
+```
+
+`make build` creates a Linux executable at `./yaml2video`; `make install` writes it to `.out/bin/yaml2video`. Go caches persist in named Docker volumes. See [container usage](README.md#container) for rendering and cleanup commands.
+
+For native development instead:
+
 1. Install Go **1.27.1 or later**.
 2. Clone the repository and download dependencies:
 

@@ -18,6 +18,7 @@ func main() {
 	if err != nil {
 		fail(err)
 	}
+
 	if options.render.WorkDir != "" {
 		plan.WorkDir = options.render.WorkDir
 		for i := range plan.Scenes {
@@ -25,9 +26,11 @@ func main() {
 			plan.Scenes[i].Output = filepath.Join(plan.WorkDir, "scenes", fmt.Sprintf("scene-%04d.mkv", i))
 		}
 	}
+
 	if options.render.Output != "" {
 		plan.Output = options.render.Output
 	}
+
 	if options.dryRun {
 		printSummary(videoPath, plan)
 		ffmpeg.LogCompiledCommand = false
@@ -84,6 +87,7 @@ func parseArgs() (string, cliOptions) {
 		usage()
 		os.Exit(2)
 	}
+
 	if *templatePath == "" {
 		usage()
 		os.Exit(2)

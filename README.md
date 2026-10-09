@@ -66,14 +66,42 @@ docker run --rm -v "$PWD:/data" ghcr.io/ondics/yaml2video:main -t /data/template
 
 Replace `template.yaml` and `video.yaml` with your filenames. The output is written into the mounted folder so it stays on your computer. Published releases are also available using their release tag instead of `main`.
 
-To build the container yourself from the project folder, use the included Make targets:
+To build and render the included example from the project folder, only Docker with Compose is required:
 
 ```sh
-make docker-build
-make docker-run
+docker compose up --build --abort-on-container-exit --exit-code-from yaml2video
 ```
 
-The Make targets mount the project folder at `/data`; set `DOCKER_ARGS` to pass different paths or options.
+This is a one-shot CLI job, not a background server. It exits after rendering and writes `examples/simple/output.mp4` into the project folder. Go, FFmpeg, and fonts are included in the containers.
+
+For your own files or a validation-only run:
+
+```sh
+docker compose run --rm --build yaml2video -t template.yaml -o output.mp4 video.yaml
+docker compose run --rm --build yaml2video -n -t examples/simple/template-simple.yaml examples/simple/video-simple.yaml
+```
+
+All Make targets also run in containers:
+
+```sh
+make run              # render the included example using go run
+make build            # build ./yaml2video for the container's Linux architecture
+make install          # install the Linux binary into .out/bin/yaml2video
+make test             # run Go tests with FFmpeg available
+make docker-build     # build the runtime image
+make docker-run       # render the included example using the runtime image
+```
+
+Set `ARGS` for `make run`, or `DOCKER_ARGS` for `make docker-run`, to pass different paths or options:
+
+```sh
+make run ARGS='-n -t examples/simple/template-simple.yaml examples/simple/video-simple.yaml'
+make docker-run DOCKER_ARGS='-t template.yaml -o output.mp4 video.yaml'
+```
+
+The runtime service mounts the project folder at `/data`; the development service mounts it at `/src` and keeps Go build and module caches in named Docker volumes. Paths outside the project must be mounted explicitly. `make build` and `make install` produce Linux binaries, not native macOS or Windows executables. Override `DOCKER_IMAGE` to change the image tag or `COMPOSE` to change the Compose command.
+
+Run `docker compose down` to remove the job container and network. Add `--volumes` to also clear the Go caches.
 
 </details>
 

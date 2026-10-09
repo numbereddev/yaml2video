@@ -1,22 +1,26 @@
 DOCKER_IMAGE ?= yaml2video:local
-DOCKER_ARGS ?= -t template.yaml -o output.mp4 video.yaml
+COMPOSE ?= docker compose
+ARGS ?= -t examples/simple/template-simple.yaml -o examples/simple/output.mp4 examples/simple/video-simple.yaml
+DOCKER_ARGS ?= $(ARGS)
+
+export DOCKER_IMAGE
 
 .PHONY: run build install test docker-build docker-run
 
 run:
-	@go run ./src/cmd/yaml2video
+	@$(COMPOSE) run --rm --build development run ./src/cmd/yaml2video $(ARGS)
 
 build:
-	@go build ./src/cmd/yaml2video
+	@$(COMPOSE) run --rm --build development build ./src/cmd/yaml2video
 
 install:
-	@go install ./src/cmd/yaml2video
+	@$(COMPOSE) run --rm --build development install ./src/cmd/yaml2video
 
 test:
-	@go test ./...
+	@$(COMPOSE) run --rm --build development test ./...
 
 docker-build:
-	docker build -f Dockerfile -t "$(DOCKER_IMAGE)" .
+	$(COMPOSE) build yaml2video
 
 docker-run:
-	docker run --rm -v "$(CURDIR):/data" "$(DOCKER_IMAGE)" $(DOCKER_ARGS)
+	$(COMPOSE) run --rm --build yaml2video $(DOCKER_ARGS)

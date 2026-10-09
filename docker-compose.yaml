@@ -1,0 +1,36 @@
+services:
+    yaml2video:
+        image: ${DOCKER_IMAGE:-yaml2video:local}
+        build:
+            context: .
+            target: runtime
+        working_dir: /data
+        volumes:
+            - .:/data
+        command:
+            - -t
+            - examples/simple/template-simple.yaml
+            - -o
+            - examples/simple/output.mp4
+            - examples/simple/video-simple.yaml
+
+    development:
+        image: ${DOCKER_IMAGE:-yaml2video:local}-dev
+        build:
+            context: .
+            target: development
+        profiles: [development]
+        working_dir: /src
+        entrypoint: [go]
+        environment:
+            GOCACHE: /root/.cache/go-build
+            GOMODCACHE: /go/pkg/mod
+            GOBIN: /src/.out/bin
+        volumes:
+            - .:/src
+            - go-build-cache:/root/.cache/go-build
+            - go-mod-cache:/go/pkg/mod
+
+volumes:
+    go-build-cache:
+    go-mod-cache:
