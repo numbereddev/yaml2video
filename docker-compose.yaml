@@ -1,0 +1,15 @@
+services:
+    yaml2video:
+        image: ${DOCKER_IMAGE:-yaml2video:local}
+        build:
+            context: .
+            target: runtime
+        working_dir: /data
+        volumes:
+            - .:/data
+        command:
+            - -t
+            - examples/simple/template-simple.yaml
+            - -o
+            - examples/simple/output.mp4
+            - examples/simple/video-simple.yaml

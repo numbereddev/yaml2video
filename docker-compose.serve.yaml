@@ -1,0 +1,18 @@
+services:
+    yaml2video:
+        image: ${DOCKER_IMAGE:-yaml2video:local}
+        build:
+            context: .
+            target: runtime
+        working_dir: /data
+        environment:
+            YAML2VIDEO_DATA_DIR: /var/lib/yaml2video
+        volumes:
+            - yaml2video-data:/var/lib/yaml2video
+        ports:
+            - "127.0.0.1:8080:8080"
+        command:
+            - serve
+
+volumes:
+    yaml2video-data:

@@ -4,6 +4,18 @@ Thanks for contributing. Small, focused changes with tests and documentation mak
 
 ## Development setup
 
+For containerized development, install Docker with Compose and clone the repository. All Make targets run inside containers; no local Go or FFmpeg installation is needed:
+
+```sh
+make test
+make build
+make run ARGS='-n -t examples/simple/template-simple.yaml examples/simple/video-simple.yaml'
+```
+
+`make build` creates a Linux executable at `./yaml2video`; `make install` writes it to `.out/bin/yaml2video`. Go caches persist in named Docker volumes. See [container usage](README.md#container) for rendering and cleanup commands.
+
+For native development instead:
+
 1. Install Go **1.27.1 or later**.
 2. Clone the repository and download dependencies:
 
@@ -27,8 +39,8 @@ gofmt -w .            # format changed Go source files
 Use dry-run mode to validate the repository examples without rendering media:
 
 ```sh
-go run . -n examples/project/example.yaml
-go run . -n -t examples/templates/appdemo-template.yaml examples/templates/appdemo-project.yaml
+go run ./src/cmd/yaml2video -n examples/project/example.yaml
+go run ./src/cmd/yaml2video -n -t examples/templates/appdemo-template.yaml examples/templates/appdemo-project.yaml
 ```
 
 `-n` validates the project and prints the planned FFmpeg commands. A normal render creates intermediate files under `.out/`; those files should not be committed.
