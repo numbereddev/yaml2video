@@ -11,7 +11,13 @@ help: ## Show this help.
 	@sed -ne '/@sed/!s/## //p' $(MAKEFILE_LIST)
 
 up: ## Start the serving stack.
-	 @$(COMPOSE) -f docker-compose.serve.yaml up
+	 @$(COMPOSE) -f docker-compose.serve.yaml up --build -d
+
+down: ## Take down the serving stack.
+	@$(COMPOSE) -f docker-compose.serve.yaml down
+
+down-volumes: ## Take down the serving stack.
+	@$(COMPOSE) -f docker-compose.serve.yaml down --volumes
 
 run: ## Run yaml2video with ARGS in the development container.
 	 @$(COMPOSE) -f docker-compose.dev.yaml run --rm --build development run ./src/cmd/yaml2video $(ARGS)

@@ -5,10 +5,14 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/ondics/yaml2video/src/api"
 	"github.com/ondics/yaml2video/src/render"
@@ -22,10 +26,9 @@ func main() {
 
 	// If we serve the API, continue with this instead.
 	if options.serveApi {
-		router := api.NewRouter()
-		port := fmt.Sprintf(":%d", PORT)
-		log.Printf("HTTP server listening to %s", port)
-		log.Fatal(http.ListenAndServe(port, router))
+		if err := serve(); err != nil {
+			fail(err)
+		}
 		return
 	}
 
@@ -63,6 +66,47 @@ func main() {
 	if err := plan.Render(context.Background()); err != nil {
 		fail(err)
 	}
+}
+
+func serve() error {
+	store, err := api.NewServer(api.ConfigFromEnv())
+	if err != nil {
+		return err
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	go store.RunCleanup(ctx)
+
+	server := &http.Server{
+		Addr: fmt.Sprintf(":%d", PORT), Handler: store.Handler(),
+		ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second,
+		IdleTimeout: 60 * time.Second,
+		// WriteTimeout is deliberately unset for long-running SSE renders.
+		BaseContext: func(net.Listener) context.Context { return ctx },
+	}
+	shutdown := make(chan struct{})
+
+	go func() {
+		<-ctx.Done()
+		timeout, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := server.Shutdown(timeout); err != nil {
+			log.Printf("HTTP shutdown: %v", err)
+			_ = server.Close()
+		}
+		close(shutdown)
+	}()
+
+	log.Printf("HTTP server listening on %s", server.Addr)
+	err = server.ListenAndServe()
+	stop()
+
+	<-shutdown
+	if err == http.ErrServerClosed {
+		return nil
+	}
+	return err
 }
 
 type cliOptions struct {

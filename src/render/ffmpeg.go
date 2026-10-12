@@ -28,7 +28,9 @@ func (p *Plan) Commands() ([][]string, error) {
 
 	commands := make([][]string, 0, len(streams))
 	for _, stream := range streams {
-		commands = append(commands, stream.Compile().Args)
+		args := stream.Compile().Args
+		command := append([]string{args[0], "-progress", "pipe:1", "-nostats"}, args[1:]...)
+		commands = append(commands, command)
 	}
 
 	return commands, nil
@@ -36,8 +38,18 @@ func (p *Plan) Commands() ([][]string, error) {
 
 // Render writes intermediate scene assets and executes the plan's FFmpeg commands.
 func (p *Plan) Render(ctx context.Context) error {
+	return p.RenderWithProgress(ctx, nil)
+}
+
+// RenderWithProgress renders the plan and calls callback synchronously on the
+// calling goroutine. A nil callback is allowed. Callbacks should return promptly
+// so progress can be drained; cancellation returns an error wrapping ctx.Err().
+func (p *Plan) RenderWithProgress(ctx context.Context, callback func(Progress)) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if p.usesASS() {
-		if err := requireFilter(ffmpegFilterASS); err != nil {
+		if err := requireFilter(ctx, ffmpegFilterASS); err != nil {
 			return err
 		}
 	}
@@ -48,20 +60,44 @@ func (p *Plan) Render(ctx context.Context) error {
 		return err
 	}
 
-	streams, err := p.streams()
+	commands, err := p.Commands()
 	if err != nil {
 		return err
 	}
 
-	for _, stream := range streams {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if err := stream.ErrorToStdOut().Run(); err != nil {
-			return err
+	weights := make([]float64, len(commands))
+	for i := range weights {
+		if i < len(p.Scenes) {
+			weights[i] = p.Scenes[i].Duration.Seconds()
+		} else {
+			weights[i] = p.Duration.Seconds()
 		}
 	}
 
+	progress := newRenderProgress(weights, callback)
+	for i, args := range commands {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		stage := "scene"
+		if i == len(p.Scenes) {
+			stage = "final"
+		}
+
+		progress.report(stage, i, 0)
+		if err := runFFmpeg(ctx, args[1:], func(seconds float64) {
+			progress.report(stage, i, seconds)
+		}); err != nil {
+			return fmt.Errorf("render %s command %d: %w", stage, i+1, err)
+		}
+		progress.report(stage, i+1, 0)
+	}
+
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	progress.report("done", len(commands), 0)
 	return nil
 }
 
@@ -516,11 +552,19 @@ func (p *Plan) writeASS() error {
 	return nil
 }
 
-func requireFilter(name string) error {
-	output, err := exec.Command("ffmpeg", "-hide_banner", "-filters").Output()
-	if err != nil {
-		return fmt.Errorf("inspect ffmpeg filters: %w", err)
+func requireFilter(ctx context.Context, name string) error {
+	cmd := exec.CommandContext(ctx, "ffmpeg", "-hide_banner", "-filters")
+	stderr := &stderrTail{}
+	cmd.Stderr = stderr
+
+	output, err := cmd.Output()
+	if ctx.Err() != nil {
+		return fmt.Errorf("inspect ffmpeg filters: %w", ctx.Err())
 	}
+	if err != nil {
+		return fmt.Errorf("inspect ffmpeg filters: %w: %s", err, stderr.data)
+	}
+
 	if !strings.Contains(string(output), " "+name+" ") {
 		return fmt.Errorf("the installed ffmpeg does not provide the required %q filter; install an ffmpeg build with libass enabled", name)
 	}

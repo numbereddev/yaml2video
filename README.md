@@ -52,6 +52,7 @@ Keep media files (images and audio) where the paths in `video.yaml` expect them.
 
 - [User guide](docs/user-guide.md)
 - [Container usage](#container)
+- [Internal render server](#internal-render-server) and [API contract](docs/server-api.md)
 - [Build from source](#build-from-source)
 
 <details>
@@ -123,6 +124,26 @@ go test ./...
 The [video schema](docs/video.schema.json) and [template schema](docs/template.schema.json) describe the YAML formats. See the [format specification](docs/video2yaml-spec.md) and [renderer specification](docs/renderer-spec.md) for implementation details.
 
 </details>
+
+## Internal render server
+
+The server API is **trusted, unauthenticated, and internal-only**. Do not expose it to the internet or other untrusted clients. The serve Compose configuration publishes port 8080 on loopback only (`127.0.0.1:8080:8080`); keep that binding and any proxy private.
+
+
+From the project folder:
+
+```sh
+docker compose -f docker-compose.serve.yaml up --build -d
+docker compose -f docker-compose.serve.yaml down
+```
+
+The serve configuration sets `YAML2VIDEO_DATA_DIR=/var/lib/yaml2video` and mounts the persistent named volume `yaml2video-data` there (Compose prefixes the volume name with its project name). Normal `down` preserves it; `down --volumes` deletes its stored data. This is separate from the one-shot CLI containers above.
+
+Server storage uses `YAML2VIDEO_DATA_DIR` when set; otherwise it uses `/var/lib/yaml2video` on Linux, `/Library/Application Support/yaml2video` on macOS, or `%ProgramData%\yaml2video` on Windows (falling back to `C:\ProgramData\yaml2video` when `ProgramData` is unset). Ensure the server can write to this directory. Relative media paths resolve under `<dataDir>/media`: callers must provision media there or mount it there themselves. The API provides no media upload or remote fetch.
+
+The API accepts `POST /render` JSON with a `name` or `id` and base64-encoded YAML in `video` and `template` (compatible with the existing Go `[]byte` JSON fields). It streams SSE `progress`, `complete`, and `error` events plus heartbeat comments; disconnecting cancels rendering. `GET /output/{id}` downloads an MP4 attachment. An occupied ID returns HTTP 409; invalid requests return HTTP 400.
+
+Jobs expire seven days after creation. A successful full, non-range GET marks a job freeable for deletion within an hour; HEAD, partial, and failed downloads do not. Cleanup runs every minute and lifecycle metadata persists across restarts. See the [full API contract and curl example](docs/server-api.md) for payloads, storage provisioning, and download semantics.
 
 ## License
 
