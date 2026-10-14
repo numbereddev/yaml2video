@@ -9,7 +9,7 @@ help: ## Show this help
 	@sed -ne '/@sed/!s/## //p' $(MAKEFILE_LIST)
 
 up: ## Start the yaml2video API server
-	 @$(COMPOSE) up -d
+	@$(COMPOSE) up -d
 
 down: ## Take down the yaml2video API server
 	@$(COMPOSE) down
@@ -21,7 +21,7 @@ build: ## Build the yaml2video Docker image
 	 $(COMPOSE) build yaml2video
 
 bash: ## Open Bash with the current directory mounted at /data
-		$(COMPOSE) run --rm --entrypoint /bin/bash --volume "$(CURDIR):/data" yaml2video
+	$(COMPOSE) run --rm --entrypoint /bin/bash --volume "$(CURDIR):/data" yaml2video
 
 test: ## Run all Go tests
-	 @$(COMPOSE) run --rm --entrypoint go --workdir /src --volume "$(CURDIR):/src" yaml2video test ./...
+	@$(COMPOSE) run --rm --entrypoint go --workdir /src --volume "$(CURDIR):/src" yaml2video test ./...
