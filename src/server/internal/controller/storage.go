@@ -1,4 +1,4 @@
-package api
+package controller
 
 import (
 	"context"
@@ -23,9 +23,6 @@ const cleanupInterval = time.Minute
 // Config controls server storage. An empty DataDir uses the platform default.
 type Config struct{ DataDir string }
 
-// ConfigFromEnv reads server configuration without changing CLI render paths.
-func ConfigFromEnv() Config { return Config{DataDir: os.Getenv("YAML2VIDEO_DATA_DIR")} }
-
 func defaultDataDir() string {
 	switch runtime.GOOS {
 	case "windows":
@@ -48,9 +45,9 @@ type jobMetadata struct {
 	Ready      bool       `json:"ready"`
 }
 
-// Server owns the API and its persistent job store. RunCleanup must be run for
-// the lifetime of the HTTP server; cleanup also runs once during construction.
-type Server struct {
+// Controller owns rendering and persistent job storage, independently of HTTP.
+// Cleanup also runs once during construction.
+type Controller struct {
 	dataDir string
 	mu      sync.Mutex
 	active  map[string]int
@@ -58,7 +55,7 @@ type Server struct {
 	render  func(context.Context, *render.Plan, func(render.Progress)) error
 }
 
-func NewServer(config Config) (*Server, error) {
+func New(config Config) (*Controller, error) {
 	if config.DataDir == "" {
 		config.DataDir = defaultDataDir()
 	}
@@ -71,7 +68,7 @@ func NewServer(config Config) (*Server, error) {
 			return nil, fmt.Errorf("initialize server data directory %s (override with YAML2VIDEO_DATA_DIR): %w", dir, err)
 		}
 	}
-	s := &Server{dataDir: dir, active: make(map[string]int), load: render.LoadBytes,
+	s := &Controller{dataDir: dir, active: make(map[string]int), load: render.LoadBytes,
 		render: func(ctx context.Context, p *render.Plan, progress func(render.Progress)) error {
 			return p.RenderWithProgress(ctx, progress)
 		}}
@@ -81,8 +78,8 @@ func NewServer(config Config) (*Server, error) {
 	return s, nil
 }
 
-func jobKey(id string) string             { sum := sha256.Sum256([]byte(id)); return hex.EncodeToString(sum[:]) }
-func (s *Server) jobDir(id string) string { return filepath.Join(s.dataDir, "jobs", jobKey(id)) }
+func jobKey(id string) string                 { sum := sha256.Sum256([]byte(id)); return hex.EncodeToString(sum[:]) }
+func (s *Controller) jobDir(id string) string { return filepath.Join(s.dataDir, "jobs", jobKey(id)) }
 
 func writeMetadata(dir string, metadata jobMetadata) error {
 	data, err := json.Marshal(metadata)
@@ -119,7 +116,7 @@ func expired(m jobMetadata, now time.Time) bool {
 	return !now.Before(m.CreatedAt.Add(retention)) || (m.FreeableAt != nil && !now.Before(m.FreeableAt.Add(freeableRetention)))
 }
 
-func (s *Server) cleanup(now time.Time) error {
+func (s *Controller) cleanup(now time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	entries, err := os.ReadDir(filepath.Join(s.dataDir, "jobs"))
@@ -152,7 +149,7 @@ func (s *Server) cleanup(now time.Time) error {
 }
 
 // RunCleanup removes expired jobs every minute until ctx is canceled.
-func (s *Server) RunCleanup(ctx context.Context) {
+func (s *Controller) RunCleanup(ctx context.Context) {
 	ticker := time.NewTicker(cleanupInterval)
 	defer ticker.Stop()
 	for {

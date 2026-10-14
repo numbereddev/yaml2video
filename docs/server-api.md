@@ -1,6 +1,6 @@
 # Internal render server API
 
-> **Implementation status:** This document specifies the target server contract. The current `src/api/api.go` handler is a stub: it accepts `name` and Go `[]byte` YAML fields, but does not yet implement the storage policy, ID alias, validation/status behavior, progress events, cancellation, downloads, or cleanup described below. The serve Compose configuration provisions the volume and environment variable; it does not implement those behaviors. The examples below are for a server implementing this contract.
+The HTTP API is implemented in `src/server`, with route handlers and rendering/storage logic under `src/server/internal`.
 
 ## Trust boundary and deployment
 
@@ -53,17 +53,17 @@ The read-only media mount supplements, rather than replaces, the writable named 
 
 ## POST /render
 
-Send `Content-Type: application/json` with a job identifier in `name` or `id`, and YAML bytes encoded as base64 strings in `video` and `template`:
+Send `Content-Type: application/json` with a job identifier in `id`, and YAML bytes encoded as base64 strings in `video` and `template`:
 
 ```json
 {
-  "name": "demo-001",
+  "id": "demo-001",
   "video": "<base64-encoded video YAML>",
   "template": "<base64-encoded template YAML>"
 }
 ```
 
-`id` is an alternative to `name`; use one identifier field per request. Base64 encoding preserves compatibility with the existing Go `[]byte` JSON fields. Send the actual YAML file contents, not filenames, raw YAML strings, or URLs.
+`id` is required; `name` is not supported. Base64 encoding preserves compatibility with the existing Go `[]byte` JSON fields. Send the actual YAML file contents, not filenames, raw YAML strings, or URLs.
 
 - **400 Bad Request:** invalid request, including invalid payload or YAML.
 - **409 Conflict:** the same ID is already occupied. Choose another ID or wait until the stored job is deleted; marking it freeable does not immediately release it.
@@ -90,7 +90,7 @@ data: {"id":"demo-001","stage":"render","percent":50}
 : heartbeat
 
 event: complete
-data: {"id":"demo-001","url":"/output/demo-001"}
+data: {"id":"demo-001","url":"/renders/demo-001"}
 
 ```
 
@@ -104,7 +104,7 @@ data: {"id":"demo-001","error":"render failed"}
 
 Heartbeats are SSE **comments** (lines beginning with `:`), not named events or JSON payloads. Ignore comments while keeping the connection alive. Clients should tolerate additional progress fields and use the returned completion URL relative to the server's origin.
 
-## GET /output/{id}
+## GET /renders/{id}
 
 Download a completed render using the relative URL from the `complete` event. The response serves the MP4 as an attachment (`Content-Type: video/mp4` and `Content-Disposition: attachment`).
 
@@ -128,7 +128,7 @@ import base64
 import json
 from pathlib import Path
 
-payload = {"name": "demo-001"}
+payload = {"id": "demo-001"}
 for key, path in {
     "video": "examples/simple/video-simple.yaml",
     "template": "examples/simple/template-simple.yaml",
