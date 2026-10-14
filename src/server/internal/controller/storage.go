@@ -69,10 +69,14 @@ func New(config Config) (*Controller, error) {
 		}
 	}
 
-	s := &Controller{dataDir: dir, active: make(map[string]int), load: render.LoadBytes,
+	s := &Controller{
+		dataDir: dir,
+		active:  make(map[string]int),
+		load:    render.LoadBytes,
 		render: func(ctx context.Context, p *render.Plan, progress func(render.Progress)) error {
 			return p.RenderWithProgress(ctx, progress)
-		}}
+		},
+	}
 
 	if err := s.cleanup(time.Now()); err != nil {
 		return nil, err

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/base64"
 	"errors"
 	"net/http"
 	"net/url"
@@ -15,8 +16,8 @@ import (
 type RenderRequest struct {
 	ID string `json:"id"`
 
-	Video    []byte `json:"video"`
-	Template []byte `json:"template"`
+	Video    string `json:"video"`
+	Template string `json:"template"`
 }
 
 func (h *Handler) Render(w http.ResponseWriter, r *http.Request) {
@@ -33,13 +34,25 @@ func (h *Handler) Render(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Base64 decode the video and template
+	video, err := base64.StdEncoding.DecodeString(body.Video)
+	if err != nil {
+		api.JSON(w, http.StatusBadRequest, api.Map{"error": "video must be a base64-encoded YAML string"})
+		return
+	}
+	template, err := base64.StdEncoding.DecodeString(body.Template)
+	if err != nil {
+		api.JSON(w, http.StatusBadRequest, api.Map{"error": "template must be a base64-encoded YAML string"})
+		return
+	}
+
 	id := body.ID
 	idValid := id == "" ||
 		len(id) > 512 ||
 		!utf8.ValidString(id) ||
 		strings.ContainsAny(id, "\x00\r\n") ||
-		len(body.Video) == 0 ||
-		len(body.Template) == 0
+		len(video) == 0 ||
+		len(template) == 0
 	if idValid {
 		api.JSON(w, http.StatusBadRequest, api.Map{
 			"error": "provide an id (max 512 bytes) and base64 video and template YAML",
@@ -48,7 +61,7 @@ func (h *Handler) Render(w http.ResponseWriter, r *http.Request) {
 	}
 
 	api.ServeSSE(w, r, func(stream *api.SSE) {
-		job, err := h.Controller.PrepareRender(id, body.Video, body.Template)
+		job, err := h.Controller.PrepareRender(id, video, template)
 		if err != nil {
 			status := http.StatusInternalServerError
 			if errors.Is(err, controller.ErrIdentityExists) {
@@ -70,8 +83,8 @@ func (h *Handler) Render(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if err := job.Run(r.Context(), func(progress render.Progress) {
-			// Send cancels the request on failure, which stops the renderer.
+		if err := job.Run(stream.Context(), func(progress render.Progress) {
+			// Send cancels the stream context on failure, which stops the renderer.
 			stream.Send("progress", struct {
 				ID string `json:"id"`
 				render.Progress

@@ -16,7 +16,9 @@ import (
 
 // Serve runs the HTTP API and cache cleanup until the process is interrupted.
 func Serve() error {
-	backend, err := controller.New(controller.Config{DataDir: os.Getenv("YAML2VIDEO_DATA_DIR")})
+	backend, err := controller.New(controller.Config{
+		DataDir: os.Getenv("YAML2VIDEO_DATA_DIR"),
+	})
 	if err != nil {
 		return err
 	}

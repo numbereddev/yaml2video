@@ -12,8 +12,8 @@ import (
 	"time"
 )
 
-// SSE serializes event and heartbeat writes. A failed write cancels the request
-// context passed to the ServeSSE callback so backend work can stop.
+// SSE serializes event and heartbeat writes. A failed write cancels its context
+// so backend work using Context can stop.
 type SSE struct {
 	writer  http.ResponseWriter
 	stream  *http.ResponseController
@@ -23,7 +23,7 @@ type SSE struct {
 	started bool
 }
 
-// ServeSSE calls handle with a cancellable request and a streaming connection.
+// ServeSSE calls handle with a streaming connection tied to the request context.
 // Headers are committed on the first send, allowing ordinary HTTP errors before it.
 func ServeSSE(w http.ResponseWriter, r *http.Request, handle func(*SSE)) {
 	if !supportsFlush(w) {
@@ -65,6 +65,11 @@ func ServeSSE(w http.ResponseWriter, r *http.Request, handle func(*SSE)) {
 	}()
 
 	handle(connection)
+}
+
+// Context is canceled when the request ends, a send fails, or ServeSSE returns.
+func (s *SSE) Context() context.Context {
+	return s.ctx
 }
 
 func (s *SSE) Send(event string, value any) error {
