@@ -3,7 +3,6 @@ services:
         image: ${DOCKER_IMAGE:-yaml2video:local}
         build:
             context: .
-
         working_dir: /data
         environment:
             YAML2VIDEO_DATA_DIR: /var/lib/yaml2video
