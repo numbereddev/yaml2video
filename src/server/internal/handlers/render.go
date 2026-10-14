@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/url"
@@ -16,8 +16,8 @@ import (
 type RenderRequest struct {
 	ID string `json:"id"`
 
-	Video    string `json:"video"`
-	Template string `json:"template"`
+	Video    map[string]any `json:"video"`
+	Template map[string]any `json:"template"`
 }
 
 func (h *Handler) Render(w http.ResponseWriter, r *http.Request) {
@@ -34,15 +34,12 @@ func (h *Handler) Render(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Base64 decode the video and template
-	video, err := base64.StdEncoding.DecodeString(body.Video)
-	if err != nil {
-		api.JSON(w, http.StatusBadRequest, api.Map{"error": "video must be a base64-encoded YAML string"})
+	if body.Video == nil {
+		api.JSON(w, http.StatusBadRequest, api.Map{"error": "video must be a JSON object"})
 		return
 	}
-	template, err := base64.StdEncoding.DecodeString(body.Template)
-	if err != nil {
-		api.JSON(w, http.StatusBadRequest, api.Map{"error": "template must be a base64-encoded YAML string"})
+	if body.Template == nil {
+		api.JSON(w, http.StatusBadRequest, api.Map{"error": "template must be a JSON object"})
 		return
 	}
 
@@ -50,13 +47,22 @@ func (h *Handler) Render(w http.ResponseWriter, r *http.Request) {
 	idValid := id == "" ||
 		len(id) > 512 ||
 		!utf8.ValidString(id) ||
-		strings.ContainsAny(id, "\x00\r\n") ||
-		len(video) == 0 ||
-		len(template) == 0
+		strings.ContainsAny(id, "\x00\r\n")
 	if idValid {
 		api.JSON(w, http.StatusBadRequest, api.Map{
-			"error": "provide an id (max 512 bytes) and base64 video and template YAML",
+			"error": "provide an id (max 512 bytes) and video and template JSON objects",
 		})
+		return
+	}
+
+	video, err := json.Marshal(body.Video)
+	if err != nil {
+		api.JSON(w, http.StatusInternalServerError, api.Map{"error": "cannot encode video document"})
+		return
+	}
+	template, err := json.Marshal(body.Template)
+	if err != nil {
+		api.JSON(w, http.StatusInternalServerError, api.Map{"error": "cannot encode template document"})
 		return
 	}
 

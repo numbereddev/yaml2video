@@ -4,13 +4,15 @@ For trusted internal clients only. No authentication.
 
 ## POST /render
 
-Send `Content-Type: application/json`:
+Send `Content-Type: application/json`. `video` and `template` must be JSON objects matching [video.schema.json](video.schema.json) and [template.schema.json](template.schema.json). `$schema` is optional in both documents. No base64 or YAML strings.
+
+Request structure (replace the empty objects with complete documents):
 
 ```json
 {
   "id": "demo-001",
-  "video": "<base64-encoded video YAML>",
-  "template": "<base64-encoded template YAML>"
+  "video": {},
+  "template": {}
 }
 ```
 
@@ -39,7 +41,7 @@ Before streaming, errors return JSON such as `{"error":"message"}`:
 
 | Status | Meaning |
 | --- | --- |
-| `400` | Invalid request or YAML |
+| `400` | Invalid request or video/template document |
 | `409` | ID already occupied |
 | `413` | Request body too large |
 | `500` | Server failure |
