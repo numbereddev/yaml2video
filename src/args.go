@@ -16,6 +16,7 @@ type cliOptions struct {
 	templatePath string
 	render       render.Options
 	dryRun       bool
+	help         bool
 	serve        bool
 }
 
@@ -23,8 +24,10 @@ func newFlagSet(options *cliOptions) *flag.FlagSet {
 	flags := flag.NewFlagSet("yaml2video", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	flags.Usage = func() {}
+	flags.BoolVar(&options.help, "h", false, "show this help page")
+	flags.BoolVar(&options.help, "help", false, "show this help page")
 	flags.BoolVar(&options.dryRun, "n", false, "validate and preview the render plan and FFmpeg commands without rendering")
-	flags.StringVar(&options.render.WorkDir, "work-dir", "", "directory for intermediate render files (default: .yaml2video-v2 beside the video YAML)")
+	flags.StringVar(&options.render.WorkDir, "work-dir", "", "directory for intermediate render files (default: .yaml2video beside the video YAML)")
 	flags.StringVar(&options.render.Output, "o", "", "output file (default: output.mp4 beside the video YAML)")
 	flags.StringVar(&options.templatePath, "t", "", "template YAML file (required for rendering)")
 	return flags
@@ -37,8 +40,12 @@ func parseArgs() (cliOptions, error) {
 		return options, errors.New("a video YAML file or the serve command is required")
 	}
 
+	flags := newFlagSet(&options)
 	if args[0] == "serve" {
-		if len(args) == 2 && (args[1] == "-h" || args[1] == "--help") {
+		if err := flags.Parse(args[1:]); err != nil {
+			return options, err
+		}
+		if options.help {
 			return options, flag.ErrHelp
 		}
 		if len(args) != 1 {
@@ -55,9 +62,11 @@ func parseArgs() (cliOptions, error) {
 		options.videoPath = args[0]
 		flagArgs = args[1:]
 	}
-	flags := newFlagSet(&options)
 	if err := flags.Parse(flagArgs); err != nil {
 		return options, err
+	}
+	if options.help {
+		return options, flag.ErrHelp
 	}
 
 	if options.videoPath == "" {

@@ -378,7 +378,7 @@ func (p *Plan) buildFinal() (*ffmpeg.Stream, error) {
 func (p *Plan) xfadeOffset(sceneIndex int, transition *BoundaryTransition) time.Duration {
 	durationBeforeScene := time.Duration(0)
 
-	for index := 0; index < sceneIndex; index++ {
+	for index := range sceneIndex {
 		durationBeforeScene += p.Scenes[index].Duration
 
 		if index < sceneIndex-1 {

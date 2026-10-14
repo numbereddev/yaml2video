@@ -146,7 +146,7 @@ The v2 loader accepts local files only and rejects URI paths. Relative media pat
 
 Media paths are checked for readability and regular-file status during loading. Decodability is left to FFmpeg; these checks do not guarantee a supported media format.
 
-The CLI writes `output.mp4` next to the video YAML unless `-o` overrides it. Intermediate files go into `.yaml2video-v2` beside the YAML unless `-work-dir` overrides it. Dimensions and frame rate come from the template; codecs and filter graphs are implementation details, not YAML fields.
+The CLI writes `output.mp4` next to the video YAML unless `-o` overrides it. Intermediate files go into `.yaml2video` beside the YAML unless `-work-dir` overrides it. Dimensions and frame rate come from the template; codecs and filter graphs are implementation details, not YAML fields.
 
 `-n` reports output settings, effective duration, scene start/end times, text/media bindings, effects, audio events, and generated FFmpeg commands without encoding. It does not verify media decoding, installed fonts, or every FFmpeg capability. Actual text rendering requires an FFmpeg build with the `ass` filter and suitable fonts.
 

@@ -5,6 +5,6 @@
 .dist
 tmp
 .env*
-**/.yaml2video-v2
+**/.yaml2video
 **/output.mp4
 .DS_Store

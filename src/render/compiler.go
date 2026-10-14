@@ -797,7 +797,7 @@ func path(base string, v any) (string, error) {
 }
 
 // Load validates both explicit documents and builds a render plan. Paths to
-// media are relative to videoPath. Work artifacts are placed in .yaml2video-v2.
+// media are relative to videoPath. Work artifacts are placed in .yaml2video.
 func Load(videoPath, templatePath string) (*Plan, error) {
 	v, e := document(videoPath, "video.schema.json")
 	if e != nil {
@@ -812,7 +812,7 @@ func Load(videoPath, templatePath string) (*Plan, error) {
 }
 
 // LoadBytes validates video and template YAML or JSON bytes and builds a render plan.
-// Media paths are relative to baseDir. Work artifacts are placed in .yaml2video-v2.
+// Media paths are relative to baseDir. Work artifacts are placed in .yaml2video.
 // Documents are supplied in memory, schemas are embedded, and media uses the filesystem.
 func LoadBytes(videoData, templateData []byte, baseDir string) (*Plan, error) {
 	v, err := documentBytes(videoData, "video", "video.schema.json")
@@ -846,7 +846,14 @@ func compose(v, t obj, base string) (*Plan, error) {
 	layout := object(t["layout"])
 	content := object(v["content"])
 	assets := object(v["assets"])
-	p := &Plan{Video: VideoSpec{Width: integer(format["width"]), Height: integer(format["height"]), FPS: integer(format["fps"]), Background: str(theme["background"])}, WorkDir: filepath.Join(base, ".yaml2video-v2"), Output: filepath.Join(base, "output.mp4")}
+	p := &Plan{
+		Video: VideoSpec{Width: integer(format["width"]),
+			Height:     integer(format["height"]),
+			FPS:        integer(format["fps"]),
+			Background: str(theme["background"])},
+		WorkDir: filepath.Join(base, ".yaml2video"),
+		Output:  filepath.Join(base, "output.mp4"),
+	}
 
 	logo, err := path(base, assets["logo"])
 	if err != nil {

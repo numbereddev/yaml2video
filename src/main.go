@@ -32,6 +32,7 @@ func main() {
 		return
 	}
 
+	ffmpeg.LogCompiledCommand = false
 	plan, err := render.Load(options.videoPath, options.templatePath)
 	if err != nil {
 		fail(err)
@@ -44,7 +45,7 @@ func main() {
 		}
 		return
 	}
-	if err := plan.Render(context.Background()); err != nil {
+	if err := renderCLI(context.Background(), plan, os.Stderr, os.Stdout); err != nil {
 		fail(err)
 	}
 }
@@ -76,12 +77,25 @@ Usage:
   yaml2video serve
 
 Options:
-  -h, --help
-        show this help page
 `)
 	flags := newFlagSet(&cliOptions{})
-	flags.SetOutput(os.Stdout)
-	flags.PrintDefaults()
+	flags.VisitAll(func(f *flag.Flag) {
+		if f.Name == "h" {
+			return
+		}
+		name := "-" + f.Name
+		if len(f.Name) > 1 {
+			name = "--" + f.Name
+		}
+		if f.Name == "help" {
+			name = "-h, --help"
+		}
+		valueName, usage := flag.UnquoteUsage(f)
+		if valueName != "" {
+			name += " " + valueName
+		}
+		fmt.Printf("  %s\n        %s\n", name, usage)
+	})
 }
 
 func printDryRun(videoPath string, plan *render.Plan) error {

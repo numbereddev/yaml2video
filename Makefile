@@ -3,6 +3,7 @@
 
 DOCKER_IMAGE ?= yaml2video:local
 DC ?= docker compose
+ARGS ?= --help
 
 export DOCKER_IMAGE
 

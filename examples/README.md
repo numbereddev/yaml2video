@@ -35,7 +35,7 @@ yaml2video -t examples/normal/template-normal.yaml examples/normal/video-normal.
 yaml2video -t examples/complex/template-complex.yaml examples/complex/video-complex.yaml
 ```
 
-Each render writes `output.mp4` into its example folder, accessible on your computer. Intermediate files go into that folder's `.yaml2video-v2/`. Add `-o /data/my-video.mp4` to choose another output location. Type `exit` to leave the shell.
+Each render writes `output.mp4` into its example folder, accessible on your computer. Intermediate files go into that folder's `.yaml2video/`. Add `-o /data/my-video.mp4` to choose another output location. Type `exit` to leave the shell.
 
 Without Docker, install yaml2video, FFmpeg with the `ass` filter, and suitable fonts. Run the same commands from the repository root using the path to your executable (for example, `./yaml2video`).
 
