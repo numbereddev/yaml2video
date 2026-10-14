@@ -33,7 +33,7 @@ func main() {
 	}
 
 	ffmpeg.LogCompiledCommand = false
-	plan, err := render.Load(options.videoPath, options.templatePath)
+	plan, err := render.LoadWithTemplateBase(options.videoPath, options.templatePath, options.render.WorkDir)
 	if err != nil {
 		fail(err)
 	}
@@ -70,10 +70,12 @@ func printHelp() {
 The video YAML supplies text, images, and audio. The template YAML defines
 layout, styling, timing defaults, and output dimensions. Their template IDs
 must match. Relative media paths resolve from the video YAML's directory.
+The template comes from -t or the video's template_file field. Relative
+template_file paths resolve beside the video YAML, or from --work-dir if set.
 
 Usage:
-  yaml2video [options] -t template.yaml video.yaml
-  yaml2video video.yaml [options] -t template.yaml
+  yaml2video [options] video.yaml
+  yaml2video video.yaml [options]
   yaml2video serve
 
 Options:

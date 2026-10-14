@@ -6,14 +6,15 @@ This document describes the public YAML format and its behavior in yaml2video. T
 
 A video supplies content and media; a template supplies design, composition, and output dimensions. Both require `$schema` and `version: 2`. Unsupported versions and unknown properties are rejected.
 
-The CLI takes both files explicitly:
+The CLI takes a video file and selects a local template YAML file from optional `video.template_file` or an explicit `-t` override:
 
 ```sh
-yaml2video -n -t template.yaml video.yaml  # validate and preview
-yaml2video -t template.yaml video.yaml     # render
+yaml2video -n video.yaml                  # validate and preview using template_file
+yaml2video video.yaml                     # render using template_file
+yaml2video -t template.yaml video.yaml     # override template_file
 ```
 
-`video.template` must equal `template.template_id`. It is an identity check, not automatic template lookup. `$schema` is an editor reference; yaml2video validates against its bundled schemas rather than downloading that URL.
+If neither `-t` nor `video.template_file` is supplied, rendering errors. `video.template` remains required and must equal the selected `template.template_id`. It is an identity check, not automatic template lookup. The API's `LoadBytes` still uses explicitly supplied template bytes; it does not look up `template_file` on the server. `$schema` is an editor reference; yaml2video validates against its bundled schemas rather than downloading that URL.
 
 Schema validation checks structure. Composition and render-plan validation additionally check bindings, media paths, timing, and supported effect combinations. Passing schema validation alone does not guarantee a successful render.
 
@@ -21,7 +22,8 @@ Schema validation checks structure. Composition and render-plan validation addit
 
 | Field | Requirement and purpose |
 | --- | --- |
-| `template` | Required template identifier. |
+| `template` | Required template identifier; must match the selected template's `template_id`. |
+| `template_file` | Optional local template YAML path for the CLI; overridden by `-t`. |
 | `metadata` | Required `title` and `language`; optional `audience`, `description`, unique `tags`, and informational `target_duration_seconds`. |
 | `assets` | Optional `logo` path and background `music` track. |
 | `content` | Required nonempty `slides` array; optional `intro` and `outro`. |
@@ -142,11 +144,13 @@ Music, foreground `audio`, and `sound_effects` use a required `path` and optiona
 
 ## Paths, output, and dry-run limits
 
-The v2 loader accepts local files only and rejects URI paths. Relative media paths resolve from the video YAML's directory. The API instead supplies a media base directory; see [server storage and media provisioning](server-api.md).
+The v2 loader accepts local files only and rejects URI paths. Relative `video.template_file` paths resolve from the video YAML's directory by default, or from `--work-dir` when that option is explicitly supplied. A relative `--work-dir` resolves from the current working directory; absolute `template_file` paths are unaffected. An explicit `-t` overrides `template_file`, and relative `-t` paths resolve from the current working directory regardless of `--work-dir`.
+
+Relative media paths always resolve from the video YAML's directory in the CLI, independently of `--work-dir`. The API instead supplies a media base directory; see [server storage and media provisioning](server-api.md).
 
 Media paths are checked for readability and regular-file status during loading. Decodability is left to FFmpeg; these checks do not guarantee a supported media format.
 
-The CLI writes `output.mp4` next to the video YAML unless `-o` overrides it. Intermediate files go into `.yaml2video` beside the YAML unless `-work-dir` overrides it. Dimensions and frame rate come from the template; codecs and filter graphs are implementation details, not YAML fields.
+The CLI writes `output.mp4` next to the video YAML unless `-o` overrides it. Intermediate files go into `.yaml2video` beside the YAML unless `--work-dir` overrides it. Dimensions and frame rate come from the template; codecs and filter graphs are implementation details, not YAML fields.
 
 `-n` reports output settings, effective duration, scene start/end times, text/media bindings, effects, audio events, and generated FFmpeg commands without encoding. It does not verify media decoding, installed fonts, or every FFmpeg capability. Actual text rendering requires an FFmpeg build with the `ass` filter and suitable fonts.
 

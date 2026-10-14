@@ -1,6 +1,7 @@
 $schema: ../../docs/video.schema.json
 version: 2
 template: office-mobility-dynamic
+template_file: template-normal.yaml
 
 metadata:
     title: "Die 2-Minuten-Büro-Routine"

@@ -27,9 +27,9 @@ func newFlagSet(options *cliOptions) *flag.FlagSet {
 	flags.BoolVar(&options.help, "h", false, "show this help page")
 	flags.BoolVar(&options.help, "help", false, "show this help page")
 	flags.BoolVar(&options.dryRun, "n", false, "validate and preview the render plan and FFmpeg commands without rendering")
-	flags.StringVar(&options.render.WorkDir, "work-dir", "", "directory for intermediate render files (default: .yaml2video beside the video YAML)")
+	flags.StringVar(&options.render.WorkDir, "work-dir", "", "directory for intermediate render files and base for relative template_file paths (default intermediates: .yaml2video beside the video YAML)")
 	flags.StringVar(&options.render.Output, "o", "", "output file (default: output.mp4 beside the video YAML)")
-	flags.StringVar(&options.templatePath, "t", "", "template YAML file (required for rendering)")
+	flags.StringVar(&options.templatePath, "t", "", "template YAML file (overrides template_file in the video YAML)")
 	return flags
 }
 
@@ -77,9 +77,7 @@ func parseArgs() (cliOptions, error) {
 	} else if flags.NArg() != 0 {
 		return options, errors.New("exactly one video YAML file is required; put flags before or after the video path")
 	}
-	if options.templatePath == "" {
-		return options, errors.New("a template YAML file is required (-t template.yaml)")
-	}
+
 	return options, nil
 }
 

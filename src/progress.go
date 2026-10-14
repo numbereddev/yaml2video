@@ -26,6 +26,7 @@ func cliProgress(output io.Writer) func(render.Progress) {
 		if percent == lastPercent && p.Completed == lastCompleted && p.Stage == lastStage {
 			return
 		}
+
 		lastPercent, lastCompleted, lastStage = percent, p.Completed, p.Stage
 		switch p.Stage {
 		case "scene":
@@ -43,10 +44,12 @@ func relativeOutputPath(path string) string {
 	if err != nil {
 		return path
 	}
+
 	absolute, err := filepath.Abs(path)
 	if err != nil {
 		return path
 	}
+
 	relative, err := filepath.Rel(cwd, absolute)
 	if err != nil {
 		// Windows paths on different volumes cannot be made relative.

@@ -796,12 +796,34 @@ func path(base string, v any) (string, error) {
 	return s, nil
 }
 
-// Load validates both explicit documents and builds a render plan. Paths to
-// media are relative to videoPath. Work artifacts are placed in .yaml2video.
+// Load validates the documents and builds a render plan. An empty templatePath
+// uses video.template_file, relative to the video YAML's directory.
+// Media paths are relative to videoPath. Work artifacts are placed in .yaml2video.
 func Load(videoPath, templatePath string) (*Plan, error) {
+	return LoadWithTemplateBase(videoPath, templatePath, "")
+}
+
+// LoadWithTemplateBase is like Load, but resolves a relative video.template_file
+// from templateBaseDir when provided. Explicit templatePath and media paths are
+// unaffected by this override.
+func LoadWithTemplateBase(videoPath, templatePath, templateBaseDir string) (*Plan, error) {
 	v, e := document(videoPath, "video.schema.json")
 	if e != nil {
 		return nil, e
+	}
+
+	if templatePath == "" {
+		templatePath = str(v["template_file"])
+		if templatePath == "" {
+			return nil, fmt.Errorf("a template YAML file is required: set template_file in the video YAML or provide -t template.yaml")
+		}
+		if !filepath.IsAbs(templatePath) {
+			base := templateBaseDir
+			if base == "" {
+				base = filepath.Dir(videoPath)
+			}
+			templatePath = filepath.Join(base, templatePath)
+		}
 	}
 
 	t, e := document(templatePath, "template.schema.json")
