@@ -833,10 +833,10 @@ func LoadWithTemplateBase(videoPath, templatePath, templateBaseDir string) (*Pla
 	return loadDocuments(v, t, filepath.Dir(videoPath))
 }
 
-// LoadBytes validates video and template YAML or JSON bytes and builds a render plan.
+// FromBytes validates video and template YAML or JSON bytes and builds a render plan.
 // Media paths are relative to baseDir. Work artifacts are placed in .yaml2video.
 // Documents are supplied in memory, schemas are embedded, and media uses the filesystem.
-func LoadBytes(videoData, templateData []byte, baseDir string) (*Plan, error) {
+func FromBytes(videoData, templateData []byte, baseDir string) (*Plan, error) {
 	v, err := documentBytes(videoData, "video", "video.schema.json")
 	if err != nil {
 		return nil, err

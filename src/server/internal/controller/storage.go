@@ -72,7 +72,7 @@ func New(config Config) (*Controller, error) {
 	s := &Controller{
 		dataDir: dir,
 		active:  make(map[string]int),
-		load:    render.LoadBytes,
+		load:    render.FromBytes,
 		render: func(ctx context.Context, p *render.Plan, progress func(render.Progress)) error {
 			return p.RenderWithProgress(ctx, progress)
 		},

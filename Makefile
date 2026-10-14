@@ -4,8 +4,9 @@
 DOCKER_IMAGE ?= yaml2video:local
 DC ?= docker compose
 ARGS ?= --help
+MOUNT_DIR ?= ./examples
 
-export DOCKER_IMAGE
+export DOCKER_IMAGE MOUNT_DIR
 
 .PHONY: help up down down-volumes build bash test
 
@@ -16,7 +17,7 @@ help: ## Show this help
 	@echo "# Commands: make ..."
 	@sed -ne '/@sed/!s/## //p' $(MAKEFILE_LIST)
 
-up: ## Start the yaml2video API server
+up: ## Start the API server (MOUNT_DIR=./examples mounted at /data)
 	@$(DC) up -d
 
 down: ## Take down the yaml2video API server

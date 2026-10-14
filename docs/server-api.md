@@ -2,6 +2,44 @@
 
 For trusted internal clients only. No authentication.
 
+## Local input files in Docker
+
+The Compose server mounts the host's `./examples/` folder at `/data`, which is also its working directory. Place video YAML files, templates, and their media there. For example, `examples/simple/video-simple.yaml` on the host becomes `/data/simple/video-simple.yaml` in the container. Host paths outside this mount are not available through it.
+
+To mount another folder, start the server with `make up MOUNT_DIR=/absolute/path/to/files`. The container path is still `/data`. Relative mount paths resolve beside `docker-compose.yaml`. The mount is writable, so local render intermediates or output placed there will appear on the host.
+
+This input mount is separate from the server's named data volume at `/var/lib/yaml2video`. `POST /render` continues to resolve relative media paths under `/var/lib/yaml2video/media`, not `/data`.
+
+## GET /render/local
+
+Render YAML files already present on the server (not uploaded by the request):
+
+```sh
+curl --fail -N --get http://localhost:8080/render/local \
+  --data-urlencode 'path=simple/video-simple.yaml'
+```
+
+| Query parameter | Meaning |
+| --- | --- |
+| `path` | Required video YAML path. Relative paths resolve from the server's working directory (`/data` in Compose). |
+| `template` | Optional template YAML path, resolved from the same working directory. Overrides the video's `template_file`. |
+| `dir` | Optional directory for intermediate render files and base for relative `template_file` references. Relative paths resolve from the server's working directory. |
+
+Without `template`, the video YAML must contain `template_file`. Without `dir`, that reference resolves beside the video YAML and intermediates go into `.out` beside it. Each request uses an isolated subfolder within the intermediate directory. Relative media paths always resolve beside the video YAML, even when `dir` is supplied.
+
+For example, an explicit template and work directory:
+
+```sh
+curl --fail -N --get http://localhost:8080/render/local \
+  --data-urlencode 'path=simple/video-simple.yaml' \
+  --data-urlencode 'template=simple/template-simple.yaml' \
+  --data-urlencode 'dir=work'
+```
+
+The server generates an ID for each request. Responses use the same `progress`, `complete`, and `error` SSE events as `POST /render`; the `complete` event includes the download URL. Completed MP4s are stored in the server's data volume, not alongside the source YAML, and use the same retention rules. Disconnecting cancels rendering. Missing or invalid files return `400` JSON before streaming starts.
+
+**Trusted clients only:** this endpoint can read paths accessible to the server process; `/data` is a mount location, not a filesystem access sandbox. It writes render intermediates and starts a render even though its HTTP method is GET.
+
 ## POST /render
 
 Send `Content-Type: application/json`. `video` and `template` must be JSON objects matching [video.schema.json](video.schema.json) and [template.schema.json](template.schema.json). `$schema` is an optional editor hint and is ignored by the server; validation uses embedded schemas. No base64 or YAML strings.

@@ -103,7 +103,7 @@ func TestLoadBytes(t *testing.T) {
 		}
 	}
 
-	got, err := LoadBytes(videoData, templateData, filepath.Dir(videoPath))
+	got, err := FromBytes(videoData, templateData, filepath.Dir(videoPath))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +125,7 @@ func TestLoadBytes(t *testing.T) {
 		{"template mismatch", []byte(strings.Replace(string(videoData), "office-mobility-simple", "other", 1)), templateData, "does not match"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := LoadBytes(tc.video, tc.template, filepath.Dir(videoPath))
+			_, err := FromBytes(tc.video, tc.template, filepath.Dir(videoPath))
 			if err == nil || !strings.Contains(err.Error(), tc.message) {
 				t.Fatalf("expected %q error, got %v", tc.message, err)
 			}

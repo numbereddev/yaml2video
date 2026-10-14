@@ -42,7 +42,24 @@ Available Make commands (`make` defaults to `make help`). Container commands use
 | `make config` | Show the resolved Docker Compose configuration |
 | `make bash` | Open an optional container shell with the current folder mounted at `/data` |
 
-Build the image before starting the server. Server data is stored in a named Docker volume, separate from the folder mounted by `make run`.
+Build the image before starting the server. Server data is stored in a named Docker volume, separate from your input files.
+
+### Server input files
+
+`make up` mounts `./examples/` from your computer at `/data` in the container. Put your video YAML, template YAML, and referenced media in that folder, ideally together in a project subfolder. For example, `examples/simple/video-simple.yaml` is available to the server as `/data/simple/video-simple.yaml` (or `simple/video-simple.yaml`, relative to the server's `/data` working directory).
+
+Override the host folder with `MOUNT_DIR` (not `PATH`, which controls executable lookup):
+
+```sh
+make up MOUNT_DIR=/absolute/path/to/my-video-files
+make config MOUNT_DIR=/absolute/path/to/my-video-files
+```
+
+Relative `MOUNT_DIR` values resolve from the directory containing `docker-compose.yaml`. The container path remains `/data` regardless of the host folder. The bind mount is writable; files written under `/data` are also written to the host folder. `make down-volumes` deletes the named server-data volume, not this folder.
+
+Use the same `MOUNT_DIR` value for subsequent Compose commands. With Docker Compose directly, use `MOUNT_DIR=/absolute/path/to/my-video-files docker compose up -d`.
+
+`make run` and `make bash` still mount the repository's current folder at `/data` instead, preserving the CLI examples above.
 
 **The API has no authentication and is for trusted, internal use only.** Keep it private; do not expose it to the internet. See the [API documentation](docs/server-api.md) for requests, media provisioning, and downloads.
 
