@@ -18,7 +18,7 @@ The two documents are validated with JSON Schema Draft 2020-12:
 
 - [`video.schema.json`](video.schema.json) validates `video.yaml`;
 - [`template.schema.json`](template.schema.json) validates `template.yaml`;
-- [`renderer-spec.md`](renderer-spec.md) defines composition and renderer behavior.
+- [YAML format and rendering reference](video2yaml-spec.md) explains fields, composition, and renderer limits.
 
 Place the schema reference at the top of each YAML file:
 

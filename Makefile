@@ -1,38 +1,27 @@
 DOCKER_IMAGE ?= yaml2video:local
 COMPOSE ?= docker compose
-ARGS ?= -t examples/simple/template-simple.yaml -o examples/simple/output.mp4 examples/simple/video-simple.yaml
-DOCKER_ARGS ?= $(ARGS)
 
 export DOCKER_IMAGE
 
-.PHONY: help up run build install test docker-build docker-run
+.PHONY: help up down down-volumes build bash tests
 
-help: ## Show this help.
+help: ## Show this help
 	@sed -ne '/@sed/!s/## //p' $(MAKEFILE_LIST)
 
-up: ## Start the serving stack.
-	 @$(COMPOSE) -f docker-compose.serve.yaml up --build -d
+up: ## Start the yaml2video API server
+	 @$(COMPOSE) up -d
 
-down: ## Take down the serving stack.
-	@$(COMPOSE) -f docker-compose.serve.yaml down
+down: ## Take down the yaml2video API server
+	@$(COMPOSE) down
 
-down-volumes: ## Take down the serving stack.
-	@$(COMPOSE) -f docker-compose.serve.yaml down --volumes
+down-volumes: ## Take down the yaml2video API server and the volumes
+	@$(COMPOSE) down --volumes
 
-run: ## Run yaml2video with ARGS in the development container.
-	 @$(COMPOSE) -f docker-compose.dev.yaml run --rm --build development run ./src/cmd/yaml2video $(ARGS)
-
-build: ## Build yaml2video in the development container.
-	 @$(COMPOSE) -f docker-compose.dev.yaml run --rm --build development build ./src/cmd/yaml2video
-
-install: ## Install yaml2video in the development container.
-	 @$(COMPOSE) -f docker-compose.dev.yaml run --rm --build development install ./src/cmd/yaml2video
-
-test: ## Run all Go tests in the development container.
-	 @$(COMPOSE) -f docker-compose.dev.yamlrun --rm --build development test ./...
-
-docker-build: ## Build the yaml2video Docker image.
+build: ## Build the yaml2video Docker image
 	 $(COMPOSE) build yaml2video
 
-docker-run: ## Run the yaml2video Docker image with DOCKER_ARGS.
-	 $(COMPOSE) run --rm --build yaml2video $(DOCKER_ARGS)
+bash: ## Open Bash with the current directory mounted at /data
+		$(COMPOSE) run --rm --entrypoint /bin/bash --volume "$(CURDIR):/data" yaml2video
+
+tests: ## Run all Go tests
+	 @$(COMPOSE) run --rm --entrypoint go --workdir /src --volume "$(CURDIR):/src" yaml2video test ./...
