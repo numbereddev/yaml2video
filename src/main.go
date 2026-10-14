@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -10,7 +11,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 
@@ -19,50 +19,39 @@ import (
 	ffmpeg "github.com/u2takey/ffmpeg-go"
 )
 
-const PORT = 8080
+const serverPort = 8080
 
 func main() {
-	videoPath, options := parseArgs()
+	options, err := parseArgs()
+	if errors.Is(err, flag.ErrHelp) {
+		printHelp()
+		return
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "yaml2video:", err)
+		printHelp()
+		os.Exit(2)
+	}
 
-	// If we serve the API, continue with this instead.
-	if options.serveApi {
+	if options.serveAPI {
 		if err := serve(); err != nil {
 			fail(err)
 		}
 		return
 	}
 
-	plan, err := render.Load(videoPath, options.templatePath)
+	plan, err := render.Load(options.videoPath, options.templatePath)
 	if err != nil {
 		fail(err)
 	}
-
-	if options.render.WorkDir != "" {
-		plan.WorkDir = options.render.WorkDir
-		for i := range plan.Scenes {
-			plan.Scenes[i].ASSPath = filepath.Join(plan.WorkDir, "ass", fmt.Sprintf("scene-%04d.ass", i))
-			plan.Scenes[i].Output = filepath.Join(plan.WorkDir, "scenes", fmt.Sprintf("scene-%04d.mkv", i))
-		}
-	}
-
-	if options.render.Output != "" {
-		plan.Output = options.render.Output
-	}
+	applyRenderOptions(plan, options.render)
 
 	if options.dryRun {
-		printSummary(videoPath, plan)
-		ffmpeg.LogCompiledCommand = false
-		commands, err := plan.Commands()
-		if err != nil {
+		if err := printDryRun(options.videoPath, plan); err != nil {
 			fail(err)
-		}
-		fmt.Println("\nFFmpeg commands:")
-		for _, args := range commands {
-			fmt.Println(shellArgs(args))
 		}
 		return
 	}
-
 	if err := plan.Render(context.Background()); err != nil {
 		fail(err)
 	}
@@ -79,9 +68,11 @@ func serve() error {
 	go store.RunCleanup(ctx)
 
 	server := &http.Server{
-		Addr: fmt.Sprintf(":%d", PORT), Handler: store.Handler(),
-		ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second,
-		IdleTimeout: 60 * time.Second,
+		Addr:              fmt.Sprintf(":%d", serverPort),
+		Handler:           store.Handler(),
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		IdleTimeout:       60 * time.Second,
 		// WriteTimeout is deliberately unset for long-running SSE renders.
 		BaseContext: func(net.Listener) context.Context { return ctx },
 	}
@@ -101,78 +92,70 @@ func serve() error {
 	log.Printf("HTTP server listening on %s", server.Addr)
 	err = server.ListenAndServe()
 	stop()
-
 	<-shutdown
-	if err == http.ErrServerClosed {
+	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}
 	return err
 }
 
-type cliOptions struct {
-	render       render.Options
-	templatePath string
-	dryRun       bool
-	serveApi     bool
-}
-
-func parseArgs() (string, cliOptions) {
-	args := os.Args[1:]
-	if len(args) == 0 {
-		usage()
-		os.Exit(2)
-	}
-
-	for i := range args {
-		arg := args[i]
-		if arg != "serve" {
-			continue
+func applyRenderOptions(plan *render.Plan, options render.Options) {
+	if options.WorkDir != "" {
+		plan.WorkDir = options.WorkDir
+		for i := range plan.Scenes {
+			plan.Scenes[i].ASSPath = filepath.Join(plan.WorkDir, "ass", fmt.Sprintf("scene-%04d.ass", i))
+			plan.Scenes[i].Output = filepath.Join(plan.WorkDir, "scenes", fmt.Sprintf("scene-%04d.mkv", i))
 		}
-		return "", cliOptions{serveApi: true}
 	}
 
-	var videoPath string
-	flagArgs := args
-	if !strings.HasPrefix(args[0], "-") {
-		videoPath = args[0]
-		flagArgs = args[1:]
-	}
-
-	flags := flag.NewFlagSet("yaml2video", flag.ExitOnError)
-	dryRun := flags.Bool("n", false, "validate and print render details/FFmpeg commands without rendering")
-	workDir := flags.String("work-dir", "", "directory for intermediate render files")
-	output := flags.String("o", "", "final output file")
-	templatePath := flags.String("t", "", "v2 template YAML document (required)")
-	_ = flags.Parse(flagArgs)
-
-	if videoPath == "" {
-		if flags.NArg() != 1 {
-			usage()
-			os.Exit(2)
-		}
-		videoPath = flags.Arg(0)
-	} else if flags.NArg() != 0 {
-		usage()
-		os.Exit(2)
-	}
-
-	if *templatePath == "" {
-		usage()
-		os.Exit(2)
-	}
-
-	return videoPath, cliOptions{
-		render:       render.Options{WorkDir: *workDir, Output: *output},
-		templatePath: *templatePath,
-		dryRun:       *dryRun,
+	if options.Output != "" {
+		plan.Output = options.Output
 	}
 }
 
-func printSummary(projectPath string, plan *render.Plan) {
+func printHelp() {
+	fmt.Printf(`yaml2video — create MP4 videos from YAML content and templates.
+
+The video YAML supplies text, images, and audio. The template YAML defines
+layout, styling, timing defaults, and output dimensions. Their template IDs
+must match. Relative media paths resolve from the video YAML's directory.
+
+Usage:
+  yaml2video [options] -t template.yaml video.yaml
+  yaml2video video.yaml [options] -t template.yaml
+  yaml2video serve
+
+Options:
+  -h, --help
+        show this help page
+`)
+	flags := newFlagSet(&cliOptions{})
+	flags.SetOutput(os.Stdout)
+	flags.PrintDefaults()
+}
+
+func printDryRun(videoPath string, plan *render.Plan) error {
+	logCompiledCommand := ffmpeg.LogCompiledCommand
+	ffmpeg.LogCompiledCommand = false
+	defer func() { ffmpeg.LogCompiledCommand = logCompiledCommand }()
+
+	commands, err := plan.Commands()
+	if err != nil {
+		return err
+	}
+	printSummary(videoPath, plan)
+	fmt.Println("\nFFmpeg commands:")
+	for _, args := range commands {
+		fmt.Println(shellArgs(args))
+	}
+	return nil
+}
+
+func printSummary(videoPath string, plan *render.Plan) {
 	frames := int64(plan.Duration.Seconds()*float64(plan.Video.FPS) + 0.5)
-	fmt.Printf("Video:      %s\n", projectPath)
+	fmt.Printf("Video:      %s\n", videoPath)
 	fmt.Printf("Output:     %s\n", plan.Output)
-	fmt.Printf("Video:      %dx%d at %d fps\n", plan.Video.Width, plan.Video.Height, plan.Video.FPS)
+	fmt.Printf("Format:     %dx%d at %d fps\n", plan.Video.Width, plan.Video.Height, plan.Video.FPS)
 	fmt.Printf("Timeline:   %s (%d frames)\n", plan.Duration, frames)
 	fmt.Printf("Scenes:     %d\n", len(plan.Scenes))
 	for i, scene := range plan.Scenes {
@@ -202,20 +185,7 @@ func printSummary(projectPath string, plan *render.Plan) {
 	fmt.Printf("Transitions: %d\n", len(plan.Transitions))
 }
 
-func shellArgs(args []string) string {
-	var result strings.Builder
-	for i, arg := range args {
-		if i != 0 {
-			result.WriteString(" ")
-		}
-		fmt.Fprintf(&result, "%q", arg)
-	}
-	return result.String()
-}
-
-func fail(err error) { fmt.Fprintln(os.Stderr, "yaml2video:", err); os.Exit(1) }
-func usage() {
-	fmt.Fprintln(os.Stderr, "usage: yaml2video [-n] -t template.yaml [-work-dir dir] [-o output.mp4] video.yaml")
-	fmt.Fprintln(os.Stderr, "       yaml2video video.yaml [-n] -t template.yaml [-work-dir dir] [-o output.mp4]")
-	fmt.Fprintln(os.Stderr, "       yaml2video serve")
+func fail(err error) {
+	fmt.Fprintln(os.Stderr, "yaml2video:", err)
+	os.Exit(1)
 }
