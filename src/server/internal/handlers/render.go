@@ -28,9 +28,7 @@ func (h *Handler) Render(w http.ResponseWriter, r *http.Request) {
 			status = http.StatusRequestEntityTooLarge
 		}
 
-		api.JSON(w, status, api.Map{
-			"error": "invalid render request: " + err.Error(),
-		})
+		api.JSON(w, status, api.Map{"error": "invalid render request: " + err.Error()})
 		return
 	}
 
