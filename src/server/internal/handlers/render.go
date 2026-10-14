@@ -19,7 +19,7 @@ type RenderRequest struct {
 	Template []byte `json:"template"`
 }
 
-func (h *Handler) HandleRender(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) Render(w http.ResponseWriter, r *http.Request) {
 	var body RenderRequest
 	if err := api.BindJSON(w, r, &body); err != nil {
 		status := http.StatusBadRequest

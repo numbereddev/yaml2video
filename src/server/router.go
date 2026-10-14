@@ -10,7 +10,8 @@ import (
 func NewRouter(backend *controller.Controller) http.Handler {
 	h := &handlers.Handler{Controller: backend}
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /render", h.HandleRender)
-	mux.HandleFunc("GET /renders/{id}", h.HandleDownload)
+	mux.HandleFunc("POST /render", h.Render)
+	mux.HandleFunc("GET /renders/{id}", h.DownloadRender)
+	mux.HandleFunc("GET /renders", h.ListRenders)
 	return Chain(mux, Recover)
 }

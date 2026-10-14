@@ -6,7 +6,7 @@ import (
 	"github.com/ondics/yaml2video/src/server/internal/api"
 )
 
-func (h *Handler) HandleDownload(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) DownloadRender(w http.ResponseWriter, r *http.Request) {
 	artifact, err := h.Controller.OpenOutput(r.PathValue("id"))
 	if err != nil {
 		api.JSON(w, http.StatusNotFound, api.Map{"error": "output not found"})

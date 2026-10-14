@@ -119,8 +119,19 @@ func readMetadata(dir string) (JobMetadata, error) {
 	return metadata, err
 }
 
+func (m JobMetadata) ExpiresAt() time.Time {
+	expiresAt := m.CreatedAt.Add(retention)
+	if m.FreeableAt != nil {
+		freeableExpiry := m.FreeableAt.Add(freeableRetention)
+		if freeableExpiry.Before(expiresAt) {
+			expiresAt = freeableExpiry
+		}
+	}
+	return expiresAt
+}
+
 func expired(m JobMetadata, now time.Time) bool {
-	return !now.Before(m.CreatedAt.Add(retention)) || (m.FreeableAt != nil && !now.Before(m.FreeableAt.Add(freeableRetention)))
+	return !now.Before(m.ExpiresAt())
 }
 
 func (s *Controller) cleanup(now time.Time) error {

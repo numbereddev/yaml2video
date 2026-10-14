@@ -44,6 +44,23 @@ Before streaming, errors return JSON such as `{"error":"message"}`:
 | `413` | Request body too large |
 | `500` | Server failure |
 
+## GET /renders
+
+List completed, unexpired renders, newest first. Returns `200 OK` with a JSON array (`[]` if none are available):
+
+```json
+[
+  {
+    "id": "demo-001",
+    "created_at": "2026-10-14T12:00:00Z",
+    "expires_at": "2026-10-21T12:00:00Z",
+    "url": "/renders/demo-001"
+  }
+]
+```
+
+`expires_at` is the earlier of seven days after creation or 59 minutes after the first successful full download. The render becomes unavailable then; cleanup may delete its files later. Listing does not change retention. Returns `500` if storage cannot be read.
+
 ## GET /renders/{id}
 
 Download the completed MP4 using the URL from the `complete` event.
