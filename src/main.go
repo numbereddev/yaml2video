@@ -20,8 +20,8 @@ func main() {
 		return
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "yaml2video:", err)
 		printHelp()
+		fmt.Fprintf(os.Stderr, "\n\x1b[31m[Error] %v\x1b[0m", err)
 		os.Exit(2)
 	}
 
@@ -65,13 +65,7 @@ func applyRenderOptions(plan *render.Plan, options render.Options) {
 }
 
 func printHelp() {
-	fmt.Printf(`yaml2video — create MP4 videos from YAML content and templates.
-
-The video YAML supplies text, images, and audio. The template YAML defines
-layout, styling, timing defaults, and output dimensions. Their template IDs
-must match. Relative media paths resolve from the video YAML's directory.
-The template comes from -t or the video's template_file field. Relative
-template_file paths resolve beside the video YAML, or from --work-dir if set.
+	fmt.Printf(`yaml2video - create MP4 videos from YAML content and templates.
 
 Usage:
   yaml2video [options] video.yaml
@@ -98,6 +92,9 @@ Options:
 		}
 		fmt.Printf("  %s\n        %s\n", name, usage)
 	})
+	fmt.Printf(`
+Copyright (c) 2026 Ondics GmbH
+`)
 }
 
 func printDryRun(videoPath string, plan *render.Plan) error {
