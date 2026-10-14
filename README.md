@@ -46,10 +46,12 @@ Build the image before starting the server. Server data is stored in a named Doc
 
 **The API has no authentication and is for trusted, internal use only.** Keep it private; do not expose it to the internet. See the [API documentation](docs/server-api.md) for requests, media provisioning, and downloads.
 
+### Using without cloning
+
 To render without cloning the repository, run the published image from the folder containing your YAML and media files:
 
 ```sh
-docker run --rm -v "$PWD:/data" ghcr.io/ondics/yaml2video:main -t template.yaml video.yaml
+docker run --rm -v "$PWD:/data" ghcr.io/ondics/yaml2video:latest -t template.yaml video.yaml
 ```
 
 ## Run without Docker
