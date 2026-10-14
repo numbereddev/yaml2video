@@ -1,0 +1,2 @@
+TEMPORARILY DISABLED.
+Will be reinstated when public users come and we've made our first release.
