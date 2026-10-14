@@ -28,26 +28,22 @@ type RenderJob struct {
 func (c *Controller) PrepareRender(id string, video, template []byte) (*RenderJob, error) {
 	return c.prepareRender(id, func() (*render.Plan, error) {
 		return c.load(video, template, filepath.Join(c.dataDir, "media"))
-	}, "")
+	})
 }
 
 // PrepareLocalRender loads files relative to the server's working directory.
-// dir overrides the template_file base and the directory for intermediates.
+// dir overrides the base for relative template_file references only.
 func (c *Controller) PrepareLocalRender(id, videoPath, templatePath, dir string) (*RenderJob, error) {
 	videoPath, err := filepath.Abs(videoPath)
 	if err != nil {
 		return nil, InvalidPlanError{err}
 	}
-	workDir := dir
-	if workDir == "" {
-		workDir = filepath.Join(filepath.Dir(videoPath), ".out")
-	}
 	return c.prepareRender(id, func() (*render.Plan, error) {
 		return render.LoadWithTemplateBase(videoPath, templatePath, dir)
-	}, workDir)
+	})
 }
 
-func (c *Controller) prepareRender(id string, load func() (*render.Plan, error), workDir string) (*RenderJob, error) {
+func (c *Controller) prepareRender(id string, load func() (*render.Plan, error)) (*RenderJob, error) {
 	job, err := c.reserveRender(id)
 	if err != nil {
 		return nil, err
@@ -65,10 +61,6 @@ func (c *Controller) prepareRender(id string, load func() (*render.Plan, error),
 		return nil, InvalidPlanError{err}
 	}
 	plan.WorkDir = filepath.Join(job.dir, "work")
-	if workDir != "" {
-		// Isolate requests that use the same input files or work directory.
-		plan.WorkDir = filepath.Join(workDir, job.key)
-	}
 	plan.Output = filepath.Join(job.dir, "output.mp4")
 
 	for i := range plan.Scenes {
