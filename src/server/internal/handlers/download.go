@@ -9,7 +9,7 @@ import (
 func (h *Handler) HandleDownload(w http.ResponseWriter, r *http.Request) {
 	artifact, err := h.Controller.OpenOutput(r.PathValue("id"))
 	if err != nil {
-		_ = api.JSON(w, http.StatusNotFound, api.Map{"error": "output not found"})
+		api.JSON(w, http.StatusNotFound, api.Map{"error": "output not found"})
 		return
 	}
 	defer artifact.Close()

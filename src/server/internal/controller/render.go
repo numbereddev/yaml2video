@@ -20,7 +20,7 @@ type RenderJob struct {
 	controller *Controller
 	dir        string
 	key        string
-	metadata   jobMetadata
+	metadata   JobMetadata
 	plan       *render.Plan
 	ready      bool
 }
@@ -30,22 +30,26 @@ func (c *Controller) PrepareRender(id string, video, template []byte) (*RenderJo
 	if err != nil {
 		return nil, err
 	}
+
 	prepared := false
 	defer func() {
 		if !prepared {
 			job.Close()
 		}
 	}()
+
 	plan, err := c.load(video, template, filepath.Join(c.dataDir, "media"))
 	if err != nil {
 		return nil, InvalidPlanError{err}
 	}
 	plan.WorkDir = filepath.Join(job.dir, "work")
 	plan.Output = filepath.Join(job.dir, "output.mp4")
+
 	for i := range plan.Scenes {
 		plan.Scenes[i].ASSPath = filepath.Join(plan.WorkDir, "ass", fmt.Sprintf("scene-%04d.ass", i))
 		plan.Scenes[i].Output = filepath.Join(plan.WorkDir, "scenes", fmt.Sprintf("scene-%04d.mkv", i))
 	}
+
 	job.plan = plan
 	prepared = true
 	return job, nil
@@ -58,6 +62,7 @@ func (c *Controller) reserveRender(id string) (*RenderJob, error) {
 	if c.active[key] > 0 {
 		return nil, ErrIdentityExists
 	}
+
 	if _, err := os.Stat(dir); err == nil {
 		metadata, readErr := readMetadata(dir)
 		if readErr != nil || !expired(metadata, time.Now()) {
@@ -69,16 +74,24 @@ func (c *Controller) reserveRender(id string) (*RenderJob, error) {
 	} else if !os.IsNotExist(err) {
 		return nil, errors.New("cannot inspect render storage")
 	}
+
 	if err := os.Mkdir(dir, 0o755); err != nil {
 		return nil, errors.New("cannot create render storage")
 	}
-	metadata := jobMetadata{ID: id, CreatedAt: time.Now().UTC()}
+
+	metadata := JobMetadata{ID: id, CreatedAt: time.Now().UTC()}
 	if err := writeMetadata(dir, metadata); err != nil {
 		os.RemoveAll(dir)
 		return nil, errors.New("cannot save render metadata")
 	}
+
 	c.active[key]++
-	return &RenderJob{controller: c, dir: dir, key: key, metadata: metadata}, nil
+	return &RenderJob{
+		controller: c,
+		dir:        dir,
+		key:        key,
+		metadata:   metadata,
+	}, nil
 }
 
 // Run renders the video and persists its completed state before returning.
@@ -86,13 +99,16 @@ func (j *RenderJob) Run(ctx context.Context, emit func(render.Progress)) error {
 	if err := j.controller.render(ctx, j.plan, emit); err != nil {
 		return err
 	}
+
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+
 	j.metadata.Ready = true
 	if err := writeMetadata(j.dir, j.metadata); err != nil {
 		return errors.New("cannot save completed render")
 	}
+
 	j.ready = true
 	return nil
 }
@@ -102,11 +118,13 @@ func (j *RenderJob) Close() {
 	c := j.controller
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	if !j.ready {
 		if err := os.RemoveAll(j.dir); err != nil {
 			log.Printf("remove failed render: %v", err)
 		}
 	}
+
 	c.release(j.key)
 }
 

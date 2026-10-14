@@ -67,7 +67,6 @@ func (h *Handler) HandleRender(w http.ResponseWriter, r *http.Request) {
 			"stage":   "starting",
 			"percent": 0,
 		}); err != nil {
-
 			return
 		}
 

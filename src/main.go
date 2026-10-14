@@ -25,7 +25,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	if options.serveAPI {
+	if options.serve {
 		if err := server.Serve(); err != nil {
 			fail(err)
 		}

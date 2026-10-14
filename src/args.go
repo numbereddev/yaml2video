@@ -16,7 +16,7 @@ type cliOptions struct {
 	templatePath string
 	render       render.Options
 	dryRun       bool
-	serveAPI     bool
+	serve        bool
 }
 
 func newFlagSet(options *cliOptions) *flag.FlagSet {
@@ -44,7 +44,7 @@ func parseArgs() (cliOptions, error) {
 		if len(args) != 1 {
 			return options, errors.New("serve does not accept additional arguments")
 		}
-		options.serveAPI = true
+		options.serve = true
 		return options, nil
 	}
 
