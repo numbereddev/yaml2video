@@ -6,15 +6,16 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"path/filepath"
+
 	"reflect"
 	"regexp"
-	"runtime"
+
 	"strings"
 	"time"
 
 	yaml "github.com/goccy/go-yaml"
 	"github.com/goccy/go-yaml/parser"
+	"github.com/ondics/yaml2video/docs"
 )
 
 var transitions = map[string]string{
@@ -102,7 +103,7 @@ func validateFades(in, out, duration time.Duration) error {
 }
 
 // Schema validation operates on JSON values so YAML scalar types are not coerced
-// by Go struct decoding. The schemas are read from the repository at runtime.
+// by Go struct decoding. Validation uses schemas embedded in the binary.
 func document(path, schemaName string) (map[string]any, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -138,7 +139,14 @@ func documentBytes(raw []byte, path, schemaName string) (map[string]any, error) 
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 
-	schemaBytes, err := os.ReadFile(filepath.Join(schemaDir(), schemaName))
+	result, ok := value.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("%s: expected an object", path)
+	}
+	// This field is an editor hint, not a runtime schema selector.
+	delete(result, "$schema")
+
+	schemaBytes, err := docs.Schemas.ReadFile(schemaName)
 	if err != nil {
 		return nil, fmt.Errorf("schema %s: %w", schemaName, err)
 	}
@@ -152,24 +160,7 @@ func documentBytes(raw []byte, path, schemaName string) (map[string]any, error) 
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 
-	result, ok := value.(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("%s: expected an object", path)
-	}
-
 	return result, nil
-}
-
-// SchemaDir may be set when schemas are deployed separately from the source tree.
-// By default, the schemas shipped in docs/ are used.
-var SchemaDir string
-
-func schemaDir() string {
-	if SchemaDir != "" {
-		return SchemaDir
-	}
-	_, file, _, _ := runtime.Caller(0)
-	return filepath.Join(filepath.Dir(file), "..", "..", "docs")
 }
 
 func validate(value any, rule, root map[string]any, path string) error {

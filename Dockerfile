@@ -13,10 +13,9 @@ RUN go mod download
 COPY . .
 
 RUN CGO_ENABLED=0 go build -trimpath \
-	-ldflags="-s -w -X github.com/ondics/yaml2video/src/render.SchemaDir=/usr/local/share/yaml2video" \
+	-ldflags="-s -w" \
 	-o /usr/local/bin/yaml2video ./src
 
-COPY docs/video.schema.json docs/template.schema.json /usr/local/share/yaml2video/
 
 WORKDIR /data
 ENTRYPOINT ["yaml2video"]

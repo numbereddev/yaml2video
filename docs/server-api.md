@@ -4,7 +4,7 @@ For trusted internal clients only. No authentication.
 
 ## POST /render
 
-Send `Content-Type: application/json`. `video` and `template` must be JSON objects matching [video.schema.json](video.schema.json) and [template.schema.json](template.schema.json). `$schema` is optional in both documents. No base64 or YAML strings.
+Send `Content-Type: application/json`. `video` and `template` must be JSON objects matching [video.schema.json](video.schema.json) and [template.schema.json](template.schema.json). `$schema` is an optional editor hint and is ignored by the server; validation uses embedded schemas. No base64 or YAML strings.
 
 Request structure (replace the empty objects with complete documents):
 
