@@ -1,6 +1,5 @@
 .out/
 .dist/
-work/
 tmp/
 examples/*/.yaml2video/
 examples/*/output.mp4
