@@ -1,4 +1,4 @@
-package api
+package server
 
 import (
 	"fmt"
@@ -6,7 +6,6 @@ import (
 	"slices"
 )
 
-// Middleware wraps an HTTP handler with additional behavior.
 type Middleware func(http.Handler) http.Handler
 
 // Chain applies middleware in the given order: the first runs outermost.
