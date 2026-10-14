@@ -89,15 +89,15 @@ func printDryRun(videoPath string, plan *render.Plan) error {
 	ffmpeg.LogCompiledCommand = false
 	defer func() { ffmpeg.LogCompiledCommand = logCompiledCommand }()
 
-	commands, err := plan.Commands()
-	if err != nil {
-		return err
-	}
+	// commands, err := plan.Commands()
+	// if err != nil {
+	// 	return err
+	// }
 	printSummary(videoPath, plan)
-	fmt.Println("\nFFmpeg commands:")
-	for _, args := range commands {
-		fmt.Println(shellArgs(args))
-	}
+	// fmt.Println("\nFFmpeg commands:")
+	// for _, args := range commands {
+	// 	fmt.Println(shellArgs(args))
+	// }
 	return nil
 }
 
