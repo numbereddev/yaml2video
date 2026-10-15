@@ -8,16 +8,15 @@ Clone this repository and open a terminal in its folder. You need Docker with Co
 
 ```sh
 make build
-make run ARGS="examples/simple/video-simple.yaml"
+make cli ARGS="examples/simple/video-simple.yaml"
 ```
 
-`make run` runs yaml2video in the container with your current folder.  
-The example's video YAML includes `template_file: template-simple.yaml`, resolved beside the video YAML, so `-t` is optional. The result is `examples/simple/output.mp4` on your computer.
+`make cli` runs yaml2video in the container with your current folder. The example's video YAML includes `template_file: template-simple.yaml`, resolved beside the video YAML, so `-t` is optional. The result is `examples/simple/output.mp4` on your computer.
 
 For your own files, pass CLI arguments through `ARGS`:
 
 ```sh
-make run ARGS="-t template.yaml -o output.mp4 video.yaml"
+make cli ARGS="-t template.yaml -o output.mp4 video.yaml"
 ```
 
 Omit `-t` if your video YAML includes `template_file`; otherwise, `-t` is required. An explicit `-t` overrides `template_file`, but the required `video.template` identifier must still match the selected template's `template_id`.
@@ -32,21 +31,30 @@ Available Make commands (`make` defaults to `make help`). Container commands use
 | --- | --- |
 | `make help` | Show available Make commands |
 | `make build` | Build or rebuild the image |
-| `make run ARGS="..."` | Run the CLI with the current folder mounted at `/data` (defaults to `--help`) |
-| `make test` | Run Go tests against the current checkout |
+| `make cli ARGS="..."` | Run the CLI with the current folder mounted at `/data` (defaults to `--help`) |
+| `make render FILE=... [DIR=...]` | Start the server, render a mounted video YAML, and print the download URL (or an error) |
 | `make up` | Start the API server at `http://127.0.0.1:8080` |
-| `make down` | Stop the server and keep its data |
-| `make down-volumes` | Stop the server and **delete its stored data** |
+| `make down` | Stop and remove the server container (including its stored renders) |
 | `make logs` | Follow container logs; press Ctrl-C to stop following |
 | `make ps` | Show service status |
 | `make config` | Show the resolved Docker Compose configuration |
 | `make bash` | Open an optional container shell with the current folder mounted at `/data` |
+| `make test` | Run Go tests against the current checkout |
 
-Build the image before starting the server. Server data is stored in a named Docker volume, separate from your input files.
+Build the image before starting the server. Rendered files are stored inside the server container, not alongside your input files; `make down` removes them.
 
 ### Server input files
 
-`make up` mounts `./examples/` from your computer read-only at `/data` in the container. Put your video YAML, template YAML, and referenced media in that folder, ideally together in a project subfolder. For example, `examples/simple/video-simple.yaml` is available to the server as `/data/simple/video-simple.yaml` (or `simple/video-simple.yaml`, relative to the server's `/data` working directory).
+`make up` mounts the repository folder (`./` by default) in the container. Put your video YAML, template YAML, and referenced media in this folder, ideally together in a project subfolder.
+
+To render that example through the API, run:
+
+```sh
+make render FILE=examples/simple/video-simple.yaml
+```
+
+`make render` starts the server if needed and prints the download URL when rendering completes. `FILE` is relative to the mount.  
+Set `DIR` only when `template_file` should resolve from a different directory; by default it resolves beside `FILE`. Relative media paths always resolve beside the video YAML. See the [API documentation](docs/server-api.md) for downloading renders.
 
 Override the host folder with `MOUNT_DIR` (not `PATH`, which controls executable lookup):
 
@@ -59,7 +67,7 @@ Relative `MOUNT_DIR` values resolve from the directory containing `docker-compos
 
 Use the same `MOUNT_DIR` value for subsequent Compose commands. With Docker Compose directly, use `MOUNT_DIR=/absolute/path/to/my-video-files docker compose up -d`.
 
-`make run` and `make bash` still mount the repository's current folder at `/data` instead, preserving the CLI examples above.
+`make cli` and `make bash` always mount the repository's current folder at `/data` instead, preserving the CLI examples above. `make render` uses the server's `MOUNT_DIR` mount; pass the same `MOUNT_DIR` when overriding it.
 
 **The API has no authentication and is for trusted, internal use only.** Keep it private; do not expose it to the internet. See the [API documentation](docs/server-api.md) for requests, media provisioning, and downloads.
 

@@ -23,10 +23,10 @@ up: ## Start the API server (MOUNT_DIR=./ mounted at /data)
 down: ## Take down the yaml2video API server
 	@$(DC) down
 
-run: ## Run yaml2video with ARGS in the container (ARGS="--help")
+cli: ## Run yaml2video with ARGS in the container (ARGS="--help")
 	@$(DC) run --rm -v "$(CURDIR):/data" yaml2video $(ARGS)
 
-videogen: up ## FILE=... DIR=... (Default: dir of FILE)
+render: up ## FILE=... DIR=(Default: dir of FILE)
 	@test -n "$(FILE)" || { echo "Error: FILE is required" >&2; exit 1; }
 	@curl -sSN --get http://localhost:8080/render/local \
 		--data-urlencode "path=$(FILE)" \
@@ -34,7 +34,7 @@ videogen: up ## FILE=... DIR=... (Default: dir of FILE)
 		| sed -n -e 's/^data: .*"url":"\([^"]*\)".*/\1/p' \
 				-e 's/^[[:space:]]*{[[:space:]]*"error"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p'
 
-check: ## Checks a yaml schema (FILE=... DIR=... (Default: dir of FILE))
+check: ## Checks a yaml schema (FILE=... DIR=(Default: dir of FILE))
 	test -n "$(FILE)"
 	@$(DC) run --rm --volume "$(CURDIR):/data" yaml2video -n $(FILE) --work-dir $()
 
