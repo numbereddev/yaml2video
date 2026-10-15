@@ -1,15 +1,44 @@
 # YAML to Video
 
-Create MP4 videos from YAML. A **video file** describes the content; a **template file** controls the layout and styling. Run it as a command-line tool or an internal rendering API.
+yaml2video turns simple YAML files into stunning, polished, repeatable MP4 videos — making it easy to automate product catalogs, social media presentations, and other recurring video content. Get started with Docker, create consistent video series with reusable templates, and integrate video generation into your production workflow through the API.
 
-## Quick start with Docker
+Features
+
+* Simple setup and usage with Docker
+* API integration to embed video generation in your production workflow
+* YAML input to describe video content
+* Reusable YAML templates for consistent video series and simplified content creation
+* Template library with a variety of video styles
+* Flexible video content, including static images, text, logos, intros, and outros
+* Visual and audio effects, including sliding animations, smooth transitions, and background music
+* MP4 output ready to use and share
+
+## Prerequisites
+
+* Docker / Docker Compose
+* make
+
+The Docker image size is about 2,5 GB.
+
+## Quick start
 
 Clone this repository and open a terminal in its folder. You need Docker with Compose and `make`; Go, FFmpeg, and fonts are included in the image.
 
 ```sh
-make build
-make cli ARGS="examples/simple/video-simple.yaml"
+$ git clone https://github.com/ondics/yaml2video
+$ cd yaml2video
+$ make build up
+$ make render FILE=examples/simple/video-simple.yaml
+/renders/TVMSVSQRYZTI7EQPGDUVHBHKQK/download
 ```
+
+Then open your browser with the url: 
+
+```
+http://<your ip-address>:8080/renders/TVMSVSQRYZTI7EQPGDUVHBHKQK/download
+```
+
+## Using CLI for video generation
 
 `make cli` runs yaml2video in the container with your current folder. The example's video YAML includes `template_file: template-simple.yaml`, resolved beside the video YAML, so `-t` is optional. The result is `examples/simple/output.mp4` on your computer.
 
@@ -102,3 +131,17 @@ On Windows, use `yaml2video.exe` instead. Without `-o`, the output is `output.mp
 ## License
 
 This project is licensed under [MIT](LICENSE).
+
+## Credits 
+
+Our hugs to their great work goes to 
+
+* FFmpeg
+
+## Author
+
+Ondics GmbH
+
+https://ondics.de
+
+(C) 2026 Ondics GmbH
