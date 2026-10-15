@@ -62,7 +62,7 @@ All fields are required. `id` must be valid UTF-8, at most 512 bytes, and contai
 | SSE event | JSON data |
 | --- | --- |
 | `progress` | `id`, `stage`, `percent` (0–100), plus optional render details |
-| `complete` | `id`, `url` pointing to `/renders/{id}` |
+| `complete` | `id`, `download` pointing to `/renders/{id}/download`, `url` pointing to `/renders/{id}` |
 | `error` | `id`, `error` describing the failure |
 
 ```text
@@ -70,7 +70,7 @@ event: progress
 data: {"id":"demo-001","stage":"starting","percent":0}
 
 event: complete
-data: {"id":"demo-001","url":"/renders/demo-001"}
+data: {"id":"demo-001","url":"/renders/demo-001","download":"/renders/demo-001/download"}
 
 ```
 
@@ -91,18 +91,32 @@ List completed, unexpired renders, newest first. Returns `200 OK` with a JSON ar
 
 ```json
 [
-  {
-    "id": "demo-001",
-    "created_at": "2026-10-14T12:00:00Z",
-    "expires_at": "2026-10-21T12:00:00Z",
-    "url": "/renders/demo-001"
-  }
+	{
+		"id": "demo-001",
+		"created_at": "2026-10-14T12:00:00Z",
+		"expires_at": "2026-10-21T12:00:00Z",
+		"download": "/renders/demo-001/download"
+	}
 ]
 ```
 
 `expires_at` is the earlier of seven days after creation or 59 minutes after the first successful full download. The render becomes unavailable then; cleanup may delete its files later. Listing does not change retention. Returns `500` if storage cannot be read.
 
 ## GET /renders/{id}
+
+Information about the render. Returns `200 OK` with a JSON object.
+
+
+```json
+{
+	"id": "demo-001",
+	"created_at": "2026-10-14T12:00:00Z",
+	"expires_at": "2026-10-21T12:00:00Z",
+	"download": "/renders/demo-001/download"
+}
+```
+
+## GET /renders/{id}/download
 
 Download the completed MP4 using the URL from the `complete` event.
 
@@ -111,7 +125,7 @@ Download the completed MP4 using the URL from the `complete` event.
 - `404 Not Found`: render missing, incomplete, or expired.
 
 ```sh
-curl --fail --output demo-001.mp4 http://localhost:8080/renders/demo-001
+curl --fail --output demo-001.mp4 http://localhost:8080/renders/demo-001/download
 ```
 
 ## Retention

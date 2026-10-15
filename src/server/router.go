@@ -12,7 +12,8 @@ func NewRouter(backend *controller.Controller) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /render/local", h.RenderLocal)
 	mux.HandleFunc("POST /render", h.Render)
-	mux.HandleFunc("GET /renders/{id}", h.DownloadRender)
+	mux.HandleFunc("GET /renders/{id}", h.GetRender)
+	mux.HandleFunc("GET /renders/{id}/download", h.DownloadRender)
 	mux.HandleFunc("GET /renders", h.ListRenders)
 	return Chain(mux, Recover)
 }

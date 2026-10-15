@@ -54,6 +54,42 @@ func (c *Controller) ListRenders() ([]JobMetadata, error) {
 	return renders, nil
 }
 
+// GetRender returns completed, unexpired jobs with an available output file.
+func (c *Controller) GetRender(id string) (*JobMetadata, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	jobsDir := filepath.Join(c.dataDir, "jobs")
+	entries, err := os.ReadDir(jobsDir)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		dir := filepath.Join(jobsDir, entry.Name())
+		metadata, err := readMetadata(dir)
+		if err != nil || metadata.ID == "" || jobKey(metadata.ID) != entry.Name() || expired(metadata, now) {
+			continue
+		}
+
+		info, err := os.Stat(filepath.Join(dir, "output.mp4"))
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+
+		if metadata.ID == id {
+			return &metadata, nil
+		}
+	}
+
+	return nil, nil
+}
+
 func (c *Controller) OpenOutput(id string) (*OutputArtifact, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

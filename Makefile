@@ -31,7 +31,7 @@ render: up ## FILE=... DIR=(Default: dir of FILE)
 	@curl -sSN --get http://localhost:8080/render/local \
 		--data-urlencode "path=$(FILE)" \
 		$(if $(DIR),--data-urlencode "dir=$(DIR)") \
-		| sed -n -e 's/^data: .*"url":"\([^"]*\)".*/\1/p' \
+		| sed -n -e 's/^data: .*"download":"\([^"]*\)".*/\1/p' \
 				-e 's/^[[:space:]]*{[[:space:]]*"error"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p'
 
 check: ## Checks a yaml schema (FILE=... DIR=(Default: dir of FILE))

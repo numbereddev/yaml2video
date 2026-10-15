@@ -126,17 +126,9 @@ func (h *Handler) serveRender(w http.ResponseWriter, r *http.Request, id string,
 		}
 
 		stream.Send("complete", api.Map{
-			"id":  id,
-			"url": outputURL(id),
+			"id":       id,
+			"url":      renderURL(id),
+			"download": downloadURL(id),
 		})
 	})
-}
-
-func outputURL(id string) string {
-	escaped := url.PathEscape(id)
-	// Escape dot-only segments so ServeMux does not redirect them as path navigation.
-	if id == "." || id == ".." {
-		escaped = strings.ReplaceAll(id, ".", "%2E")
-	}
-	return "/renders/" + escaped + ".mp4"
 }

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/ondics/yaml2video/src/server/internal/api"
@@ -9,7 +10,6 @@ import (
 
 func (h *Handler) DownloadRender(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	id = strings.TrimSuffix(id, ".mp4")
 
 	artifact, err := h.Controller.OpenOutput(id)
 	if err != nil {
@@ -61,4 +61,17 @@ func (w *DownloadWriter) Write(data []byte) (int, error) {
 		w.failed = true
 	}
 	return n, err
+}
+
+func renderURL(id string) string {
+	escaped := url.PathEscape(id)
+	// Escape dot-only segments so ServeMux does not redirect them as path navigation.
+	if id == "." || id == ".." {
+		escaped = strings.ReplaceAll(id, ".", "%2E")
+	}
+	return "/renders/" + escaped
+}
+
+func downloadURL(id string) string {
+	return renderURL(id) + "/download"
 }
