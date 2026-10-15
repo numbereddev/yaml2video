@@ -1,6 +1,7 @@
 $schema: ../../docs/video.schema.json
 version: 2
 template: office-mobility-standard
+template_file: template-normal.yaml
 
 metadata:
     title: "60 Sekunden Schreibtisch-Pause"

@@ -796,12 +796,34 @@ func path(base string, v any) (string, error) {
 	return s, nil
 }
 
-// Load validates both explicit documents and builds a render plan. Paths to
-// media are relative to videoPath. Work artifacts are placed in .yaml2video-v2.
+// Load validates the documents and builds a render plan. An empty templatePath
+// uses video.template_file, relative to the video YAML's directory.
+// Media paths are relative to videoPath. Work artifacts are placed in .yaml2video.
 func Load(videoPath, templatePath string) (*Plan, error) {
+	return LoadWithTemplateBase(videoPath, templatePath, "")
+}
+
+// LoadWithTemplateBase is like Load, but resolves a relative video.template_file
+// from templateBaseDir when provided. Explicit templatePath and media paths are
+// unaffected by this override.
+func LoadWithTemplateBase(videoPath, templatePath, templateBaseDir string) (*Plan, error) {
 	v, e := document(videoPath, "video.schema.json")
 	if e != nil {
 		return nil, e
+	}
+
+	if templatePath == "" {
+		templatePath = str(v["template_file"])
+		if templatePath == "" {
+			return nil, fmt.Errorf("a template YAML file is required: set template_file in the video YAML or provide -t template.yaml")
+		}
+		if !filepath.IsAbs(templatePath) {
+			base := templateBaseDir
+			if base == "" {
+				base = filepath.Dir(videoPath)
+			}
+			templatePath = filepath.Join(base, templatePath)
+		}
 	}
 
 	t, e := document(templatePath, "template.schema.json")
@@ -811,10 +833,10 @@ func Load(videoPath, templatePath string) (*Plan, error) {
 	return loadDocuments(v, t, filepath.Dir(videoPath))
 }
 
-// LoadBytes validates video and template YAML or JSON bytes and builds a render plan.
-// Media paths are relative to baseDir. Work artifacts are placed in .yaml2video-v2.
+// FromBytes validates video and template YAML or JSON bytes and builds a render plan.
+// Media paths are relative to baseDir. Work artifacts are placed in .yaml2video.
 // Documents are supplied in memory, schemas are embedded, and media uses the filesystem.
-func LoadBytes(videoData, templateData []byte, baseDir string) (*Plan, error) {
+func FromBytes(videoData, templateData []byte, baseDir string) (*Plan, error) {
 	v, err := documentBytes(videoData, "video", "video.schema.json")
 	if err != nil {
 		return nil, err
@@ -846,7 +868,14 @@ func compose(v, t obj, base string) (*Plan, error) {
 	layout := object(t["layout"])
 	content := object(v["content"])
 	assets := object(v["assets"])
-	p := &Plan{Video: VideoSpec{Width: integer(format["width"]), Height: integer(format["height"]), FPS: integer(format["fps"]), Background: str(theme["background"])}, WorkDir: filepath.Join(base, ".yaml2video-v2"), Output: filepath.Join(base, "output.mp4")}
+	p := &Plan{
+		Video: VideoSpec{Width: integer(format["width"]),
+			Height:     integer(format["height"]),
+			FPS:        integer(format["fps"]),
+			Background: str(theme["background"])},
+		WorkDir: filepath.Join(base, ".yaml2video"),
+		Output:  filepath.Join(base, "output.mp4"),
+	}
 
 	logo, err := path(base, assets["logo"])
 	if err != nil {

@@ -2,6 +2,45 @@
 
 For trusted internal clients only. No authentication.
 
+## Local input files in Docker
+
+The Compose server mounts the host's `./examples/` folder read-only at `/data`, which is also its working directory. Place video YAML files, templates, and their media there. For example, `examples/simple/video-simple.yaml` on the host becomes `/data/simple/video-simple.yaml` in the container. Host paths outside this mount are not available through it.
+
+To mount another folder, start the server with `make up MOUNT_DIR=/absolute/path/to/files`. The container path is still `/data`. Relative mount paths resolve beside `docker-compose.yaml`. The server reads YAML and media from this mount but does not write render files there.
+
+This input mount is separate from the server's named data volume at `/var/lib/yaml2video`. `POST /render` continues to resolve relative media paths under `/var/lib/yaml2video/media`, not `/data`.
+
+## GET /render/local
+
+Render YAML files already present on the server (not uploaded by the request):
+
+```sh
+curl --fail -N --get http://localhost:8080/render/local \
+  --data-urlencode 'path=simple/video-simple.yaml'
+```
+
+| Query parameter | Meaning |
+| --- | --- |
+| `path` | Required video YAML path. Relative paths resolve from the server's working directory (`/data` in Compose). |
+| `template` | Optional template YAML path, resolved from the same working directory. Overrides the video's `template_file`. |
+| `dir` | Optional base for relative `template_file` references. Relative paths resolve from the server's working directory. It does not control where render files are written. |
+
+Without `template`, the video YAML must contain `template_file`. Without `dir`, that reference resolves beside the video YAML. Relative media paths always resolve beside the video YAML, even when `dir` is supplied.
+
+For example, override the video's template with an explicit path:
+
+```sh
+curl --fail -N --get http://localhost:8080/render/local \
+  --data-urlencode 'path=simple/video-simple.yaml' \
+  --data-urlencode 'template=simple/template-simple.yaml'
+```
+
+If the video uses `template_file: template-simple.yaml` but the template is stored under `/data/templates/`, omit `template` and pass `dir=templates`. This changes template lookup only, not the render workspace.
+
+The server generates an ID for each request. Responses use the same `progress`, `complete`, and `error` SSE events as `POST /render`; the `complete` event includes the download URL. Completed MP4s are stored in the server's data volume, not alongside the source YAML, and use the same retention rules. Disconnecting cancels rendering. Missing or invalid files return `400` JSON before streaming starts.
+
+**Trusted clients only:** this endpoint can read paths accessible to the server process; `/data` is a mount location, not a filesystem access sandbox. It starts a render even though its HTTP method is GET.
+
 ## POST /render
 
 Send `Content-Type: application/json`. `video` and `template` must be JSON objects matching [video.schema.json](video.schema.json) and [template.schema.json](template.schema.json). `$schema` is an optional editor hint and is ignored by the server; validation uses embedded schemas. No base64 or YAML strings.
@@ -23,7 +62,7 @@ All fields are required. `id` must be valid UTF-8, at most 512 bytes, and contai
 | SSE event | JSON data |
 | --- | --- |
 | `progress` | `id`, `stage`, `percent` (0–100), plus optional render details |
-| `complete` | `id`, `url` pointing to `/renders/{id}` |
+| `complete` | `id`, `download` pointing to `/renders/{id}/download`, `url` pointing to `/renders/{id}` |
 | `error` | `id`, `error` describing the failure |
 
 ```text
@@ -31,7 +70,7 @@ event: progress
 data: {"id":"demo-001","stage":"starting","percent":0}
 
 event: complete
-data: {"id":"demo-001","url":"/renders/demo-001"}
+data: {"id":"demo-001","url":"/renders/demo-001","download":"/renders/demo-001/download"}
 
 ```
 
@@ -52,18 +91,32 @@ List completed, unexpired renders, newest first. Returns `200 OK` with a JSON ar
 
 ```json
 [
-  {
-    "id": "demo-001",
-    "created_at": "2026-10-14T12:00:00Z",
-    "expires_at": "2026-10-21T12:00:00Z",
-    "url": "/renders/demo-001"
-  }
+	{
+		"id": "demo-001",
+		"created_at": "2026-10-14T12:00:00Z",
+		"expires_at": "2026-10-21T12:00:00Z",
+		"download": "/renders/demo-001/download"
+	}
 ]
 ```
 
 `expires_at` is the earlier of seven days after creation or 59 minutes after the first successful full download. The render becomes unavailable then; cleanup may delete its files later. Listing does not change retention. Returns `500` if storage cannot be read.
 
 ## GET /renders/{id}
+
+Information about the render. Returns `200 OK` with a JSON object.
+
+
+```json
+{
+	"id": "demo-001",
+	"created_at": "2026-10-14T12:00:00Z",
+	"expires_at": "2026-10-21T12:00:00Z",
+	"download": "/renders/demo-001/download"
+}
+```
+
+## GET /renders/{id}/download
 
 Download the completed MP4 using the URL from the `complete` event.
 
@@ -72,7 +125,7 @@ Download the completed MP4 using the URL from the `complete` event.
 - `404 Not Found`: render missing, incomplete, or expired.
 
 ```sh
-curl --fail --output demo-001.mp4 http://localhost:8080/renders/demo-001
+curl --fail --output demo-001.mp4 http://localhost:8080/renders/demo-001/download
 ```
 
 ## Retention

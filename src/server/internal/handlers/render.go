@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -14,8 +15,7 @@ import (
 )
 
 type RenderRequest struct {
-	ID string `json:"id"`
-
+	ID       string         `json:"id"`
 	Video    map[string]any `json:"video"`
 	Template map[string]any `json:"template"`
 }
@@ -64,8 +64,32 @@ func (h *Handler) Render(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.serveRender(w, r, id, func() (*controller.RenderJob, error) {
+		return h.Controller.PrepareRender(id, video, template)
+	})
+}
+
+func (h *Handler) RenderLocal(w http.ResponseWriter, r *http.Request) {
+	query, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil {
+		api.JSON(w, http.StatusBadRequest, api.Map{"error": "invalid query parameters"})
+		return
+	}
+	path := query.Get("path")
+	if strings.TrimSpace(path) == "" {
+		api.JSON(w, http.StatusBadRequest, api.Map{"error": "path to a video YAML file is required"})
+		return
+	}
+
+	id := rand.Text()
+	h.serveRender(w, r, id, func() (*controller.RenderJob, error) {
+		return h.Controller.PrepareLocalRender(id, path, query.Get("template"), query.Get("dir"))
+	})
+}
+
+func (h *Handler) serveRender(w http.ResponseWriter, r *http.Request, id string, prepare func() (*controller.RenderJob, error)) {
 	api.ServeSSE(w, r, func(stream *api.SSE) {
-		job, err := h.Controller.PrepareRender(id, video, template)
+		job, err := prepare()
 		if err != nil {
 			status := http.StatusInternalServerError
 			if errors.Is(err, controller.ErrIdentityExists) {
@@ -102,17 +126,9 @@ func (h *Handler) Render(w http.ResponseWriter, r *http.Request) {
 		}
 
 		stream.Send("complete", api.Map{
-			"id":  id,
-			"url": outputURL(id),
+			"id":       id,
+			"url":      renderURL(id),
+			"download": downloadURL(id),
 		})
 	})
-}
-
-func outputURL(id string) string {
-	escaped := url.PathEscape(id)
-	// Escape dot-only segments so ServeMux does not redirect them as path navigation.
-	if id == "." || id == ".." {
-		escaped = strings.ReplaceAll(id, ".", "%2E")
-	}
-	return "/renders/" + escaped
 }

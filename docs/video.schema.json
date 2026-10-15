@@ -20,6 +20,10 @@
 			"minLength": 1,
 			"description": "Identifier of the template that supplies layout and rendering defaults."
 		},
+		"template_file": {
+			"$ref": "#/$defs/path",
+			"description": "Optional template YAML file used when -t is omitted. Relative paths resolve from the video YAML directory, or from --work-dir when supplied. The template identifier must still match template_id."
+		},
 		"metadata": { "$ref": "#/$defs/metadata" },
 		"assets": { "$ref": "#/$defs/assets" },
 		"content": { "$ref": "#/$defs/content" }

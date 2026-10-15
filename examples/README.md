@@ -12,32 +12,37 @@ All three templates produce vertical **1080 × 1920 videos at 30 fps**.
 
 ## Run with Docker
 
-From the **repository root**, build the image and open its shell:
+From the **repository root**, build the image, check the simple example, then render it:
 
 ```sh
 make build
-make bash
-```
-
-Inside the shell, the repository is mounted at `/data`. Check the simple example, then render it:
-
-```sh
-yaml2video -n -t examples/simple/template-simple.yaml examples/simple/video-simple.yaml
-yaml2video -t examples/simple/template-simple.yaml examples/simple/video-simple.yaml
+make run ARGS="-n examples/simple/video-simple.yaml"
+make run ARGS="examples/simple/video-simple.yaml"
 ```
 
 `-n` validates the YAML and previews the render plan and FFmpeg commands without creating a video. Remove it to render.
 
-Try the other examples in the same shell:
+Try the other examples:
 
 ```sh
-yaml2video -t examples/normal/template-normal.yaml examples/normal/video-normal.yaml
-yaml2video -t examples/complex/template-complex.yaml examples/complex/video-complex.yaml
+make run ARGS="-t examples/normal/template-normal.yaml examples/normal/video-normal.yaml"
+make run ARGS="-t examples/complex/template-complex.yaml examples/complex/video-complex.yaml"
 ```
 
-Each render writes `output.mp4` into its example folder, accessible on your computer. Intermediate files go into that folder's `.yaml2video-v2/`. Add `-o /data/my-video.mp4` to choose another output location. Type `exit` to leave the shell.
+`make run` mounts the repository at `/data` and passes `ARGS` to the CLI. Each render writes `output.mp4` into its example folder, accessible on your computer. Intermediate files go into that folder's `.yaml2video/`. Add `-o my-video.mp4` inside `ARGS` to choose another output location.
 
-Without Docker, install yaml2video, FFmpeg with the `ass` filter, and suitable fonts. Run the same commands from the repository root using the path to your executable (for example, `./yaml2video`).
+## Run the binary directly
+
+Without Docker, install yaml2video, FFmpeg with the `ass` filter, and suitable fonts. From the repository root:
+
+```sh
+./yaml2video -n examples/simple/video-simple.yaml
+./yaml2video examples/simple/video-simple.yaml
+./yaml2video -t examples/normal/template-normal.yaml examples/normal/video-normal.yaml
+./yaml2video -t examples/complex/template-complex.yaml examples/complex/video-complex.yaml
+```
+
+The simple example links to its template with `template_file`, so `-t` is optional. An explicit `-t` can still select a template.
 
 ## Adapt an example
 

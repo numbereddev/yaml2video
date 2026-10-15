@@ -44,6 +44,7 @@ Minimal structure:
 $schema: ./video.schema.json
 version: 2
 template: office-mobility-simple
+template_file: template-simple.yaml
 
 metadata:
   title: "Kurze Bewegungspause"
@@ -55,7 +56,18 @@ content:
       text: "Schultern kreisen"
 ```
 
-The selected template supplies the missing layout and timing defaults.
+The selected template supplies the missing layout and timing defaults. `template` is a required identifier and must match the selected template's `template_id`; it is not a file path or an automatic lookup key. The optional `template_file` supplies a local template YAML path for the CLI.
+
+With `template_file` set, render or preview without `-t`:
+
+```sh
+yaml2video examples/simple/video-simple.yaml
+yaml2video -n examples/simple/video-simple.yaml
+```
+
+An explicit `-t template.yaml` overrides `template_file`. If neither is supplied, rendering errors. Relative `template_file` paths resolve beside the video YAML by default. When `--work-dir` is explicitly supplied, they resolve from that directory instead; a relative `--work-dir` itself resolves from the current working directory. Absolute `template_file` paths are unaffected. Relative explicit `-t` paths always resolve from the current working directory.
+
+`--work-dir` still controls intermediate files (by default, `.yaml2video` beside the video YAML); it does not change the CLI's media base directory. The API's `LoadBytes` continues to use the explicitly supplied template bytes and does not look up `template_file` on the server.
 
 ## Metadata and assets
 
@@ -81,7 +93,7 @@ assets:
 
 `target_duration_seconds` is informational and may be checked by a strict renderer. Music is mixed over the complete effective video duration and is looped or trimmed by the renderer.
 
-Paths are resolved relative to the video document unless renderer configuration specifies another base directory.
+Relative media paths in the CLI are resolved beside the video document, even when `--work-dir` is supplied. The API uses its supplied media base directory.
 
 ## Content structure
 
@@ -339,7 +351,7 @@ Those values belong in `template.yaml` or renderer configuration. Content-specif
 Before rendering, check:
 
 1. `video.yaml` uses `version: 2` and references the video schema.
-2. `template` matches a real `template_id`.
+2. `template` matches the selected template's `template_id`; the CLI has either `template_file` or an explicit `-t` path.
 3. Required metadata and at least one slide are present.
 4. Every slide has an image and primary text.
 5. Every audio and image path exists and is readable.

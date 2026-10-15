@@ -1,7 +1,7 @@
 .out/
 .dist/
 tmp/
-examples/*/.yaml2video-v2/
+examples/*/.yaml2video/
 examples/*/output.mp4
 
 # Environment

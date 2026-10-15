@@ -20,8 +20,8 @@ func main() {
 		return
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "yaml2video:", err)
 		printHelp()
+		fmt.Fprintf(os.Stderr, "\n\x1b[31m[Error] %v\x1b[0m", err)
 		os.Exit(2)
 	}
 
@@ -32,7 +32,8 @@ func main() {
 		return
 	}
 
-	plan, err := render.Load(options.videoPath, options.templatePath)
+	ffmpeg.LogCompiledCommand = false
+	plan, err := render.LoadWithTemplateBase(options.videoPath, options.templatePath, options.render.WorkDir)
 	if err != nil {
 		fail(err)
 	}
@@ -44,7 +45,7 @@ func main() {
 		}
 		return
 	}
-	if err := plan.Render(context.Background()); err != nil {
+	if err := renderCLI(context.Background(), plan, os.Stderr, os.Stdout); err != nil {
 		fail(err)
 	}
 }
@@ -64,24 +65,36 @@ func applyRenderOptions(plan *render.Plan, options render.Options) {
 }
 
 func printHelp() {
-	fmt.Printf(`yaml2video — create MP4 videos from YAML content and templates.
-
-The video YAML supplies text, images, and audio. The template YAML defines
-layout, styling, timing defaults, and output dimensions. Their template IDs
-must match. Relative media paths resolve from the video YAML's directory.
+	fmt.Printf(`yaml2video - create MP4 videos from YAML content and templates.
 
 Usage:
-  yaml2video [options] -t template.yaml video.yaml
-  yaml2video video.yaml [options] -t template.yaml
+  yaml2video [options] video.yaml
+  yaml2video video.yaml [options]
   yaml2video serve
 
 Options:
-  -h, --help
-        show this help page
 `)
 	flags := newFlagSet(&cliOptions{})
-	flags.SetOutput(os.Stdout)
-	flags.PrintDefaults()
+	flags.VisitAll(func(f *flag.Flag) {
+		if f.Name == "h" {
+			return
+		}
+		name := "-" + f.Name
+		if len(f.Name) > 1 {
+			name = "--" + f.Name
+		}
+		if f.Name == "help" {
+			name = "-h, --help"
+		}
+		valueName, usage := flag.UnquoteUsage(f)
+		if valueName != "" {
+			name += " " + valueName
+		}
+		fmt.Printf("  %s\n        %s\n", name, usage)
+	})
+	fmt.Printf(`
+Copyright (c) 2026 Ondics GmbH
+`)
 }
 
 func printDryRun(videoPath string, plan *render.Plan) error {
@@ -89,15 +102,15 @@ func printDryRun(videoPath string, plan *render.Plan) error {
 	ffmpeg.LogCompiledCommand = false
 	defer func() { ffmpeg.LogCompiledCommand = logCompiledCommand }()
 
-	commands, err := plan.Commands()
-	if err != nil {
-		return err
-	}
+	// commands, err := plan.Commands()
+	// if err != nil {
+	// 	return err
+	// }
 	printSummary(videoPath, plan)
-	fmt.Println("\nFFmpeg commands:")
-	for _, args := range commands {
-		fmt.Println(shellArgs(args))
-	}
+	// fmt.Println("\nFFmpeg commands:")
+	// for _, args := range commands {
+	// 	fmt.Println(shellArgs(args))
+	// }
 	return nil
 }
 
@@ -136,6 +149,6 @@ func printSummary(videoPath string, plan *render.Plan) {
 }
 
 func fail(err error) {
-	fmt.Fprintln(os.Stderr, "yaml2video:", err)
+	fmt.Fprintf(os.Stderr, "\n\x1b[31m[Error] %v\x1b[0m", err)
 	os.Exit(1)
 }
