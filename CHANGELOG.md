@@ -36,6 +36,8 @@ All notable changes to the project are documented here.
 - Reusing the same audio file several times in one video no longer fails to build the FFmpeg graph.
 - `allOf`, `oneOf`, and `anyOf` schema failures now report the underlying error of the closest alternative; `if`/`then`/`else` is supported.
 - A `cut` followed by a blended transition no longer fails with an xfade timebase mismatch.
+- Explicit line breaks in text (`"line one\nline two"`) are kept instead of being collapsed into spaces; each line is wrapped on its own and counts toward `max_lines`.
+- Element clips with `set` no longer multiply each other's variants: a variant from an earlier clip is only split again where its window overlaps a later clip's. Eight sequential `set` clips on one element now add eight layers instead of 255.
 
 ## v2
 

@@ -1230,21 +1230,24 @@ func textLayer(value, key string, el, typography, theme obj, video VideoSpec) (L
 	}
 
 	maxChars := max(1, int(float64(width)/(float64(size)*0.4)))
-	words := strings.Fields(value)
+	// Explicit line breaks are kept; each paragraph is wrapped on its own.
 	var lines []string
-	line := ""
-	for _, word := range words {
-		if line != "" && len([]rune(line))+1+len([]rune(word)) > maxChars {
-			lines = append(lines, line)
-			line = ""
+	for paragraph := range strings.SplitSeq(strings.ReplaceAll(value, "\r\n", "\n"), "\n") {
+		line := ""
+		for word := range strings.FieldsSeq(paragraph) {
+			if line != "" && len([]rune(line))+1+len([]rune(word)) > maxChars {
+				lines = append(lines, line)
+				line = ""
+			}
+			if line != "" {
+				line += " "
+			}
+			line += word
 		}
-		if line != "" {
-			line += " "
-		}
-		line += word
-	}
-	if line != "" {
 		lines = append(lines, line)
+	}
+	for len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
 	}
 	if maxLines := integer(el["max_lines"]); maxLines > 0 && len(lines) > maxLines {
 		return LayerPlan{}, fmt.Errorf("text exceeds max_lines %d", maxLines)

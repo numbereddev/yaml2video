@@ -539,7 +539,11 @@ func (c *advancedContext) targetElement(clip obj, o owner, shift time.Duration) 
 			}
 			continue
 		}
-		layer.HideDuring = append(layer.HideDuring, window)
+		shown, overlaps := variantWindow(*layer, window)
+		if !overlaps {
+			continue
+		}
+		layer.HideDuring = append(layer.HideDuring, shown)
 		if hide {
 			continue
 		}
@@ -547,7 +551,7 @@ func (c *advancedContext) targetElement(clip obj, o owner, shift time.Duration) 
 		if err != nil {
 			return true, err
 		}
-		variant.ShowOnly = &window
+		variant.ShowOnly = &shown
 		variant.HideDuring = nil
 		variant.Animation = overrideAnimation(layer.Animation, anim, start)
 		if err := checkAnimatedPanel(variant); err != nil {
@@ -579,7 +583,11 @@ func (c *advancedContext) targetElement(clip obj, o owner, shift time.Duration) 
 				}
 				continue
 			}
-			element.Layer.HideDuring = append(element.Layer.HideDuring, window)
+			shown, overlaps := variantWindow(element.Layer, window)
+			if !overlaps {
+				continue
+			}
+			element.Layer.HideDuring = append(element.Layer.HideDuring, shown)
 			if hide {
 				continue
 			}
@@ -593,7 +601,7 @@ func (c *advancedContext) targetElement(clip obj, o owner, shift time.Duration) 
 				return true, err
 			}
 			for v := range variants {
-				variants[v].Layer.ShowOnly = &window
+				variants[v].Layer.ShowOnly = &shown
 				variants[v].Layer.HideDuring = nil
 				variants[v].Layer.Animation = overrideAnimation(element.Layer.Animation, anim, start-element.Start)
 				if err := checkAnimatedPanel(variants[v].Layer); err != nil {
@@ -605,6 +613,18 @@ func (c *advancedContext) targetElement(clip obj, o owner, shift time.Duration) 
 		}
 	}
 	return hit, nil
+}
+
+// variantWindow is when a set-clip variant of layer shows: the clip's window,
+// narrowed to the layer's own window when the layer is itself a variant from an
+// earlier clip. It reports false when they don't overlap; the layer is then left
+// alone, so clips with separate windows don't multiply each other's variants.
+func variantWindow(layer LayerPlan, window Window) (Window, bool) {
+	if layer.ShowOnly == nil {
+		return window, true
+	}
+	shown := Window{max(window.Start, layer.ShowOnly.Start), min(window.End, layer.ShowOnly.End)}
+	return shown, shown.Start < shown.End
 }
 
 func checkAnimatedPanel(layer LayerPlan) error {

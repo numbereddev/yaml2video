@@ -204,6 +204,58 @@ advanced:
                 set: { visible: false }
 `
 
+// Sequential set clips, as in a count-up, plus one that overlaps the third.
+const sequentialSetClips = `
+advanced:
+    tracks:
+        - id: count-up
+          attach: stat
+          clips:
+              - { type: element, target: number, start: 0s, duration: 0.5s, set: { text: "1" } }
+              - { type: element, target: number, start: 0.5s, duration: 0.5s, set: { text: "2" } }
+              - { type: element, target: number, start: 1s, duration: 0.5s, set: { text: "3" } }
+              - { type: element, target: number, start: 1.2s, duration: 0.4s, set: { style: { color: "#FF3FD0" } } }
+`
+
+func TestSequentialSetClipsDoNotMultiply(t *testing.T) {
+	video, tmpl := example(t, "layouts")
+	raw, _ := os.ReadFile(video)
+	if err := os.WriteFile(video, append(raw, []byte(sequentialSetClips)...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p, err := Load(video, tmpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ms := time.Millisecond
+	want := map[Window]string{
+		{0, 500 * ms}:          "1",
+		{500 * ms, 1000 * ms}:  "2",
+		{1000 * ms, 1500 * ms}: "3",
+		{1200 * ms, 1600 * ms}: "8", // the original, recolored
+		{1200 * ms, 1500 * ms}: "3", // the overlap: "3", recolored
+	}
+	got := map[Window]string{}
+	for _, clip := range layoutTrack(p.Scenes[2]).Clips {
+		if clip.ID != "number" || clip.Layer.ShowOnly == nil {
+			continue
+		}
+		if _, dup := got[*clip.Layer.ShowOnly]; dup {
+			t.Errorf("duplicate variant for %v", *clip.Layer.ShowOnly)
+		}
+		got[*clip.Layer.ShowOnly] = spanText(clip.Layer)
+	}
+	if len(got) != len(want) {
+		t.Fatalf("variants: got %v, want %v", got, want)
+	}
+	for window, text := range want {
+		if got[window] != text {
+			t.Errorf("variant %v: got %q, want %q", window, got[window], text)
+		}
+	}
+}
+
 func TestElementTargeting(t *testing.T) {
 	video, tmpl := example(t, "layouts")
 	raw, _ := os.ReadFile(video)
@@ -262,5 +314,30 @@ func TestElementTargeting(t *testing.T) {
 		if _, err := Load(video, tmpl); err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("%s: error %v, want %q", tc.replace, err, tc.want)
 		}
+	}
+}
+
+func TestTextLayerKeepsExplicitLineBreaks(t *testing.T) {
+	video := VideoSpec{Width: 1000, Height: 1000}
+	el := obj{"placement": obj{"anchor": "center"}, "style": obj{"font_size": 50.0}, "max_width_ratio": 0.5}
+	theme := obj{"text_color": "#FFFFFF"}
+
+	for _, tc := range []struct{ value, want string }{
+		{"This video\nis a YAML file.", "This video\nis a YAML file."},
+		{"one\r\n\ntwo\n", "one\n\ntwo"},
+		{"a long line that wraps around the box width", "a long line that wraps\naround the box width"},
+	} {
+		layer, err := textLayer(tc.value, "text", el, obj{}, theme, video)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := layer.Spans[0].Content; got != tc.want {
+			t.Errorf("%q: got %q, want %q", tc.value, got, tc.want)
+		}
+	}
+
+	el["max_lines"] = 1.0
+	if _, err := textLayer("one\ntwo", "text", el, obj{}, theme, video); err == nil || !strings.Contains(err.Error(), "max_lines") {
+		t.Errorf("explicit line breaks should count toward max_lines, got %v", err)
 	}
 }
