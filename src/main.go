@@ -149,6 +149,6 @@ func printSummary(videoPath string, plan *render.Plan) {
 }
 
 func fail(err error) {
-	fmt.Fprintln(os.Stderr, "yaml2video:", err)
+	fmt.Fprintf(os.Stderr, "\n\x1b[31m[Error] %v\x1b[0m", err)
 	os.Exit(1)
 }

@@ -138,5 +138,5 @@ func outputURL(id string) string {
 	if id == "." || id == ".." {
 		escaped = strings.ReplaceAll(id, ".", "%2E")
 	}
-	return "/renders/" + escaped
+	return "/renders/" + escaped + ".mp4"
 }

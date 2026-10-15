@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"flag"
-	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -79,15 +78,4 @@ func parseArgs() (cliOptions, error) {
 	}
 
 	return options, nil
-}
-
-func shellArgs(args []string) string {
-	var result strings.Builder
-	for i, arg := range args {
-		if i != 0 {
-			result.WriteString(" ")
-		}
-		fmt.Fprintf(&result, "%q", arg)
-	}
-	return result.String()
 }

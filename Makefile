@@ -4,7 +4,7 @@
 DOCKER_IMAGE ?= yaml2video:local
 DC ?= docker compose
 ARGS ?= --help
-MOUNT_DIR ?= ./examples
+MOUNT_DIR ?= .
 
 export DOCKER_IMAGE MOUNT_DIR
 
@@ -13,22 +13,30 @@ export DOCKER_IMAGE MOUNT_DIR
 .DEFAULT_GOAL := help
 
 help: ## Show this help
-	@echo "# yaml2video make helpers"
-	@echo "# Commands: make ..."
-	@sed -ne '/@sed/!s/## //p' $(MAKEFILE_LIST)
+	@echo "yaml2video - make helpers"
+	@echo "Commands: make ..."
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-up: ## Start the API server (MOUNT_DIR=./examples mounted at /data)
+up: ## Start the API server (MOUNT_DIR=./ mounted at /data)
 	@$(DC) up -d
 
 down: ## Take down the yaml2video API server
 	@$(DC) down
 
-# Pass arguments with: make run ARGS="--help"
-run: ## Run yaml2video with ARGS in the container
-	@$(DC) run --rm --volume "$(CURDIR):/data" yaml2video $(ARGS)
+run: ## Run yaml2video with ARGS in the container (ARGS="--help")
+	@$(DC) run --rm -v "$(CURDIR):/data" yaml2video $(ARGS)
 
-check: ## Checks a yaml schema
-	@$(DC) run --rm --volume "$(CURDIR):/data" yaml2video -n $(ARGS)
+videogen: up ## FILE=... DIR=... (Default: dir of FILE)
+	@test -n "$(FILE)" || { echo "Error: FILE is required" >&2; exit 1; }
+	@curl -sSN --get http://localhost:8080/render/local \
+		--data-urlencode "path=$(FILE)" \
+		$(if $(DIR),--data-urlencode "dir=$(DIR)") \
+		| sed -n -e 's/^data: .*"url":"\([^"]*\)".*/\1/p' \
+				-e 's/^[[:space:]]*{[[:space:]]*"error"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p'
+
+check: ## Checks a yaml schema (FILE=... DIR=... (Default: dir of FILE))
+	test -n "$(FILE)"
+	@$(DC) run --rm --volume "$(CURDIR):/data" yaml2video -n $(FILE) --work-dir $()
 
 logs: ## Show logs (stop with ctrl-c)
 	$(DC) logs -f -t --tail=100

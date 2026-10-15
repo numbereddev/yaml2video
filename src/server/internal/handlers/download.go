@@ -2,12 +2,16 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/ondics/yaml2video/src/server/internal/api"
 )
 
 func (h *Handler) DownloadRender(w http.ResponseWriter, r *http.Request) {
-	artifact, err := h.Controller.OpenOutput(r.PathValue("id"))
+	id := r.PathValue("id")
+	id = strings.TrimSuffix(id, ".mp4")
+
+	artifact, err := h.Controller.OpenOutput(id)
 	if err != nil {
 		api.JSON(w, http.StatusNotFound, api.Map{"error": "output not found"})
 		return
