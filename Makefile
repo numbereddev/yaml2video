@@ -6,7 +6,7 @@ DC ?= docker compose
 ARGS ?= --help
 MOUNT_DIR ?= ./examples
 
-export DOCKER_IMAGE MOUNT_DIR FILE
+export DOCKER_IMAGE MOUNT_DIR
 
 .PHONY: help up down down-volumes build bash test
 
@@ -23,15 +23,12 @@ up: ## Start the API server (MOUNT_DIR=./examples mounted at /data)
 down: ## Take down the yaml2video API server
 	@$(DC) down
 
-down-volumes: ## Take down the yaml2video API server and the volumes
-	@$(DC) down --volumes
-
 # Pass arguments with: make run ARGS="--help"
 run: ## Run yaml2video with ARGS in the container
 	@$(DC) run --rm --volume "$(CURDIR):/data" yaml2video $(ARGS)
 
 check: ## Checks a yaml schema
-	@$(DC) run --rm --volume "$(CURDIR):/data" yaml2video -n $(FILE)
+	@$(DC) run --rm --volume "$(CURDIR):/data" yaml2video -n $(ARGS)
 
 logs: ## Show logs (stop with ctrl-c)
 	$(DC) logs -f -t --tail=100
