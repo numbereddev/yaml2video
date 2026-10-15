@@ -1,6 +1,10 @@
 # YAML to Video
 
-yaml2video turns simple YAML files into stunning, polished, repeatable MP4 videos — making it easy to automate product catalogs, social media presentations, and other recurring video content. Get started with Docker, create consistent video series with reusable templates, and integrate video generation into your production workflow through the API.
+yaml2video turns simple YAML files into stunning, polished, repeatable MP4 videos,
+making it easy to automate product catalogs, social media presentations, and other
+recurring video content. Get started with Docker, create consistent video series with
+reusable templates, and integrate video generation into your production workflow 
+through the API or CLI.
 
 Features
 
