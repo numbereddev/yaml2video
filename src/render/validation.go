@@ -18,15 +18,36 @@ import (
 	"github.com/ondics/yaml2video/docs"
 )
 
+// transitions maps built-in transition names to FFmpeg xfade transitions.
 var transitions = map[string]string{
 	"fade": "fade", "dissolve": "dissolve", "wipe-left": "wipeleft", "wipe-right": "wiperight",
 	"wipe-up": "wipeup", "wipe-down": "wipedown", "slide-left": "slideleft",
 	"slide-right": "slideright", "slide-up": "slideup", "slide-down": "slidedown",
 	"circle-open": "circleopen", "circle-close": "circleclose", "radial": "radial",
 	"pixelize": "pixelize", "zoom-in": "zoomin", "cover": "coverleft", "reveal": "revealleft", "blur": "hblur",
+
+	"fade-black": "fadeblack", "fade-white": "fadewhite", "fade-grays": "fadegrays",
+	"fade-fast": "fadefast", "fade-slow": "fadeslow", "distance": "distance",
+	"smooth-left": "smoothleft", "smooth-right": "smoothright", "smooth-up": "smoothup", "smooth-down": "smoothdown",
+	"circle-crop": "circlecrop", "rect-crop": "rectcrop",
+	"horz-open": "horzopen", "horz-close": "horzclose", "vert-open": "vertopen", "vert-close": "vertclose",
+	"diag-tl": "diagtl", "diag-tr": "diagtr", "diag-bl": "diagbl", "diag-br": "diagbr",
+	"wipe-tl": "wipetl", "wipe-tr": "wipetr", "wipe-bl": "wipebl", "wipe-br": "wipebr",
+	"slice-left": "hlslice", "slice-right": "hrslice", "slice-up": "vuslice", "slice-down": "vdslice",
+	"squeeze-h": "squeezeh", "squeeze-v": "squeezev",
+	"wind-left": "hlwind", "wind-right": "hrwind", "wind-up": "vuwind", "wind-down": "vdwind",
+	"cover-left": "coverleft", "cover-right": "coverright", "cover-up": "coverup", "cover-down": "coverdown",
+	"reveal-left": "revealleft", "reveal-right": "revealright", "reveal-up": "revealup", "reveal-down": "revealdown",
 }
 
-func xfadeType(kind string) string { return transitions[kind] }
+// xfadeNames holds every xfade transition a plan may use, including custom expressions.
+var xfadeNames = func() map[string]bool {
+	names := map[string]bool{"custom": true}
+	for _, xfade := range transitions {
+		names[xfade] = true
+	}
+	return names
+}()
 
 func (p *Plan) validateRenderPlan() error {
 	if p.Duration <= 0 {
@@ -61,15 +82,18 @@ func (p *Plan) validateRenderPlan() error {
 			return fmt.Errorf("transition: invalid scene index %d", tr.FromScene)
 		}
 
-		if tr.Type == "cut" {
+		if tr.Type == "cut" || tr.XFade == "" && tr.Duration == 0 {
 			if tr.Duration != 0 {
 				return fmt.Errorf("cut transition must have zero duration")
 			}
 			continue
 		}
 
-		if _, ok := transitions[tr.Type]; !ok {
+		if !xfadeNames[tr.xfade()] {
 			return fmt.Errorf("unsupported scene transition %q", tr.Type)
+		}
+		if tr.xfade() == "custom" && tr.Expr == "" {
+			return fmt.Errorf("custom transition %q needs an expression", tr.Type)
 		}
 
 		if tr.Duration <= 0 || tr.Duration > p.Scenes[tr.FromScene].Duration || tr.Duration > p.Scenes[tr.FromScene+1].Duration {
@@ -282,7 +306,10 @@ func validate(value any, rule, root map[string]any, path string) error {
 				if rule["additionalProperties"] == false {
 					return fail("unknown property " + k)
 				}
-				continue
+				// A schema here validates every property not listed (map-like objects).
+				if r, ok = rule["additionalProperties"].(map[string]any); !ok {
+					continue
+				}
 			}
 			if err := validate(v, r, root, path+"."+k); err != nil {
 				return err
@@ -321,24 +348,77 @@ func validate(value any, rule, root map[string]any, path string) error {
 	for _, kind := range []string{"oneOf", "anyOf", "allOf"} {
 		if rules, ok := rule[kind].([]any); ok {
 			passes := 0
+			var firstErr, bestErr error
+			bestScore := -1
 			for _, r := range rules {
-				if validate(value, r.(map[string]any), root, path) == nil {
+				branch := r.(map[string]any)
+				err := validate(value, branch, root, path)
+				if err == nil {
 					passes++
+					continue
+				}
+				if firstErr == nil {
+					firstErr = err
+				}
+				if score := branchScore(value, branch, root, err); score > bestScore {
+					bestErr, bestScore = err, score
 				}
 			}
-			if kind == "allOf" && passes != len(rules) || kind == "oneOf" && passes != 1 || kind == "anyOf" && passes == 0 {
-				return fail(kind + " failed")
+			// allOf branches are independent requirements, so the first failure is the useful message.
+			if kind == "allOf" && passes != len(rules) {
+				return firstErr
+			}
+			if kind == "oneOf" && passes > 1 {
+				return fail("matches more than one alternative")
+			}
+			// With no match, report the alternative the value most resembles.
+			if kind == "oneOf" && passes == 0 || kind == "anyOf" && passes == 0 {
+				return bestErr
 			}
 		}
 	}
 
-	if cond, ok := rule["if"].(map[string]any); ok && validate(value, cond, root, path) == nil {
-		if then, ok := rule["then"].(map[string]any); ok {
-			return validate(value, then, root, path)
+	if cond, ok := rule["if"].(map[string]any); ok {
+		branch := "else"
+		if validate(value, cond, root, path) == nil {
+			branch = "then"
+		}
+		if next, ok := rule[branch].(map[string]any); ok {
+			return validate(value, next, root, path)
 		}
 	}
 
 	return nil
+}
+
+// branchScore rates how closely a value resembles a failed schema alternative:
+// matching type first, then how many of its required properties are present,
+// then how deep the error is.
+func branchScore(value any, rule, root map[string]any, err error) int {
+	for depth := 0; depth < 16; depth++ {
+		ref, ok := rule["$ref"].(string)
+		if !ok {
+			break
+		}
+		cur := any(root)
+		for part := range strings.SplitSeq(strings.TrimPrefix(ref, "#/"), "/") {
+			cur = object(cur)[part]
+		}
+		rule = object(cur)
+	}
+	score := 0
+	if typ, ok := rule["type"].(string); !ok || validate(value, map[string]any{"type": typ}, root, "") == nil {
+		score += 1000
+	}
+	if obj, ok := value.(map[string]any); ok {
+		for _, r := range list(rule["required"]) {
+			if _, ok := obj[str(r)]; ok {
+				score += 10
+			}
+		}
+	}
+	at, _, _ := strings.Cut(err.Error(), ": ")
+	return score + strings.Count(at, ".") + strings.Count(at, "[")
 }
 
 func number(v any) (float64, bool) {

@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
+	"time"
 
 	"github.com/ondics/yaml2video/src/render"
 	"github.com/ondics/yaml2video/src/server"
@@ -122,7 +125,7 @@ func printSummary(videoPath string, plan *render.Plan) {
 	fmt.Printf("Timeline:   %s (%d frames)\n", plan.Duration, frames)
 	fmt.Printf("Scenes:     %d\n", len(plan.Scenes))
 	for i, scene := range plan.Scenes {
-		fmt.Printf("  %02d  %-16s %s – %s (%s)\n", i+1, scene.ID, scene.Start, scene.Start+scene.Duration, scene.Duration)
+		fmt.Printf("  %02d  %-16s %s – %s (%s) layout %s\n", i+1, scene.ID, scene.Start, scene.Start+scene.Duration, scene.Duration, scene.Layout)
 		for _, layer := range scene.Layers {
 			if layer.Kind == "text" {
 				for _, span := range layer.Spans {
@@ -134,9 +137,23 @@ func printSummary(videoPath string, plan *render.Plan) {
 			for _, effect := range layer.Effects {
 				fmt.Printf("       effect: %s\n", effect.Type)
 			}
+			if layer.Animation != nil {
+				fmt.Printf("       keyframes: %s\n", animatedProps(layer.Animation))
+			}
+			if layer.ShowOnly != nil {
+				fmt.Printf("       shown %s – %s (modified %s)\n", scene.Start+layer.ShowOnly.Start, scene.Start+layer.ShowOnly.End, layer.Element)
+			}
 		}
 		for _, audio := range scene.Audio {
 			fmt.Printf("       audio: %s at %s (volume %.2f)\n", audio.Path, scene.Start+audio.Offset, audio.Volume)
+		}
+		printTracks(scene.Tracks, scene.Start)
+	}
+	if len(plan.Tracks) > 0 || len(plan.Audio) > 0 {
+		fmt.Println("Video tracks:")
+		printTracks(plan.Tracks, 0)
+		for _, audio := range plan.Audio {
+			fmt.Printf("       audio: %s at %s (volume %.2f)\n", audio.Path, audio.Offset, audio.Volume)
 		}
 	}
 	if plan.Music == nil {
@@ -146,6 +163,61 @@ func printSummary(videoPath string, plan *render.Plan) {
 	}
 	fmt.Printf("Work dir:   %s\n", plan.WorkDir)
 	fmt.Printf("Transitions: %d\n", len(plan.Transitions))
+	for _, tr := range plan.Transitions {
+		blend := "cut"
+		if tr.Duration > 0 {
+			blend = fmt.Sprintf("%s blend", tr.Duration)
+		}
+		fmt.Printf("  %s → %s at %s: %s (%s", plan.Scenes[tr.FromScene].ID, plan.Scenes[tr.FromScene+1].ID, tr.Offset, tr.Type, blend)
+		if len(tr.Effects) > 0 {
+			fmt.Printf(", %d effect layer(s)", len(tr.Effects))
+		}
+		fmt.Println(")")
+	}
+}
+
+// printTracks lists a scene's custom layout elements and track clips, in
+// stacking order, with their absolute times.
+func printTracks(tracks []render.TrackPlan, offset time.Duration) {
+	for _, track := range tracks {
+		fmt.Printf("       track %s:\n", track.ID)
+		for _, clip := range track.Clips {
+			detail := clip.Layer.Path
+			switch clip.Kind {
+			case "effect":
+				names := make([]string, 0, len(clip.Adjustments))
+				for _, a := range clip.Adjustments {
+					names = append(names, a.Type)
+				}
+				detail = strings.Join(names, " + ")
+			case "text":
+				for _, span := range clip.Layer.Spans {
+					detail += strings.ReplaceAll(span.Content, "\n", " ")
+				}
+				detail = fmt.Sprintf("%q", detail)
+			}
+			if clip.ID != "" {
+				detail = "#" + clip.ID + " " + detail
+			}
+			fmt.Printf("         %-6s %s – %s %s", clip.Kind, offset+clip.Start, offset+clip.Start+clip.Duration, detail)
+			if clip.Layer.Animation != nil {
+				fmt.Printf(" [keyframes: %s]", animatedProps(clip.Layer.Animation))
+			}
+			if clip.Layer.ShowOnly != nil {
+				fmt.Printf(" [shown %s–%s]", offset+clip.Layer.ShowOnly.Start, offset+clip.Layer.ShowOnly.End)
+			}
+			fmt.Println()
+		}
+	}
+}
+
+func animatedProps(anim *render.Animation) string {
+	names := make([]string, 0, len(anim.Props))
+	for name := range anim.Props {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return strings.Join(names, ", ")
 }
 
 func fail(err error) {

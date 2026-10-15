@@ -9,6 +9,8 @@ All three templates produce vertical **1080 × 1920 videos at 30 fps**.
 | [simple](simple/) | Three slides, basic text and images, fade transitions, and background music. Start here. |
 | [normal](normal/) | Four slides, branded labels, rounded image cards, pan/zoom, and glass-panel text effects. |
 | [complex](complex/) | Six slides, slide numbering, a sound effect, foreground audio, and music ducking. |
+| [layouts](layouts/) | [Named layouts](../docs/layouts.md): a classic default, a classic variant, custom element-list layouts filled from `variables`, a custom intro, and an aliased outro. |
+| [advanced](advanced/) | Every newer feature together. **Layouts:** a section-chosen custom intro, an aliased default slide layout, a named classic variant, a custom stat card filled from `variables` (fallbacks, optional, progress, audio, and effect elements), and an aliased custom outro. **[Advanced mode](../docs/advanced.md):** keyframe and effect presets, template and video tracks (attached by role, layout, or scene, with offsets and optional clips), element clips that animate, modify, and hide layout elements, rotating and custom transitions with separate in/out sides, a ducking audio clip with volume keyframes, `disable_tracks`, and a master bus. |
 
 ## Run with Docker
 

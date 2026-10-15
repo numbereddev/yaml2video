@@ -103,6 +103,8 @@ The standard content model has three semantic areas:
 - `slides`: ordered image-and-text items;
 - `outro`: closing message and required call to action.
 
+The requirements below apply to the template's classic layouts. An item can pick another named layout with `layout:` and fill a custom layout's `$(NAME)` placeholders with `variables:`; see [named and custom layouts](#named-and-custom-layouts).
+
 ### Intro
 
 An intro must contain at least a `title` or an `image`:
@@ -318,6 +320,39 @@ layout.outro.cta    -> content.outro.cta
 
 An optional element is omitted when its content value is absent. The `logo` binds to `assets.logo`. A slide `progress` element is generated from the current slide number and total number of slides.
 
+## Named and custom layouts
+
+`intro`, `slide`, and `outro` are only the defaults. A template can add as many named layouts as it needs. Each is classic (the fixed elements above) or custom: an ordered list of `text`, `image`, `rect`, `circle`, `progress`, `audio`, and `effect` elements, with no predefined title or tip. Custom elements read the content through `$(NAME)` variables:
+
+```yaml
+# template.yaml
+layout:
+  quote:
+    - type: rect
+      width: 900
+      height: 900
+      corner_radius: 48
+      color: "#16323A"
+      placement: { anchor: center }
+    - type: text
+      text: $(QUOTE)
+      placement: { anchor: center }
+      style: { font_size: 58, weight: bold, align: center }
+      max_width_ratio: 0.72
+      max_lines: 5
+```
+
+```yaml
+# video.yaml
+content:
+  slides:
+    - layout: quote
+      variables:
+        QUOTE: "Eine kurze Pause reicht schon."
+```
+
+A slide without `layout:` uses its section's `layout:`, or else `slide`. See [layouts](layouts.md) for every element field, variable rules, and aliases.
+
 ## Designing short social videos
 
 For office-mobility videos, start with:
@@ -353,10 +388,10 @@ Before rendering, check:
 1. `video.yaml` uses `version: 2` and references the video schema.
 2. `template` matches the selected template's `template_id`; the CLI has either `template_file` or an explicit `-t` path.
 3. Required metadata and at least one slide are present.
-4. Every slide has an image and primary text.
+4. Every slide with a classic layout has an image and primary text; every slide with a custom layout supplies its variables.
 5. Every audio and image path exists and is readable.
 6. Sound-effect offsets fit into their containing sections.
-7. The template contains all three layouts.
+7. The template contains the three default layouts, and every named layout the video selects.
 8. Effect types are suitable for their layout elements.
 9. Durations and transitions produce a positive effective duration.
 10. The result is suitable for the target social platform.

@@ -1,0 +1,186 @@
+$schema: ../../docs/template.schema.json
+version: 2
+template_id: office-mobility-layouts
+description: "Named slide layouts: a classic default, a classic variant, and fully custom layouts built from element lists and $(VARIABLES)."
+
+format:
+    aspect_ratio: "9:16"
+    width: 1080
+    height: 1920
+    fps: 30
+
+defaults:
+    theme:
+        background: "#101820"
+        text_color: "#FFFFFF"
+        accent_color: "#7DE2A8"
+        muted_color: "#B9C5C8"
+    typography:
+        font_family: "Inter"
+        title_size: 88
+        body_size: 52
+        tip_size: 38
+    timing:
+        intro_duration: 3s
+        slide_duration: 3s
+        outro_duration: 3s
+        transition:
+            type: fade
+            duration: 0.35s
+    media:
+        default_fit: contain
+    audio:
+        default_volume: 0.3
+        fade_in: 0.2s
+        fade_out: 0.8s
+
+composition:
+    sections:
+        - id: intro
+          role: intro
+          source: content.intro
+        - id: exercises
+          role: slide
+          source: content.slides
+          repeat: true
+          duration_from: item.duration
+        - id: outro
+          role: outro
+          source: content.outro
+
+layout:
+    # A custom intro: elements render in list order, later ones on top.
+    intro:
+        background: "#101820"
+        elements:
+            - type: rect
+              width: 1080
+              height: 760
+              color: "#16323A"
+              placement: { anchor: top-center }
+            - type: image
+              path: $(logo)
+              placement: { anchor: top-center, offset_y: 140 }
+              max_width_ratio: 0.5
+              max_height_ratio: 0.12
+              fit: contain
+              optional: true          # skipped when the video has no logo
+            - type: text
+              id: headline
+              text: $(title)
+              placement: { anchor: center, offset_y: -40 }
+              style: { font_size: 96, weight: bold, align: center }
+              max_width_ratio: 0.84
+              max_lines: 3
+            - type: text
+              text: $(subtitle|Drei Übungen für zwischendurch)
+              placement: { anchor: center, offset_y: 160 }
+              style: { font_size: 42, color: "#7DE2A8", align: center }
+              max_width_ratio: 0.84
+              max_lines: 2
+
+    # The default slide layout stays classic: fixed image/text/tip elements.
+    slide:
+        background: "#101820"
+        image:
+            placement: { anchor: top-center, offset_y: 170 }
+            max_width_ratio: 0.82
+            max_height_ratio: 0.48
+            fit: contain
+        text:
+            placement: { anchor: center, offset_y: 260 }
+            style: { font_size: 58, weight: bold, color: "#FFFFFF", align: center }
+            max_lines: 3
+            max_width_ratio: 0.82
+        tip:
+            placement: { anchor: bottom-center, offset_y: -190 }
+            style: { font_size: 38, color: "#7DE2A8", align: center }
+            max_lines: 3
+            max_width_ratio: 0.84
+        progress:
+            placement: { anchor: top-center, offset_y: 100 }
+            width_ratio: 0.82
+
+    # A named classic variant: the same slide fields, image below the text.
+    slide-image-low:
+        background: "#0C2A24"
+        text:
+            placement: { anchor: top-center, offset_y: 220 }
+            style: { font_size: 64, weight: bold, color: "#FFFFFF", align: center }
+            max_lines: 2
+            max_width_ratio: 0.84
+        image:
+            placement: { anchor: center, offset_y: 120 }
+            max_width_ratio: 0.82
+            max_height_ratio: 0.44
+            fit: contain
+            shape: rounded-rectangle
+        tip:
+            placement: { anchor: bottom-center, offset_y: -160 }
+            style: { font_size: 38, color: "#7DE2A8", align: center }
+            max_lines: 2
+            max_width_ratio: 0.84
+
+    # A fully custom layout: a big number with its own variables.
+    stat:
+        background: "#7DE2A8"
+        elements:
+            - type: text
+              id: number
+              text: $(NUMBER)
+              placement: { anchor: center, offset_y: -180 }
+              style: { font_size: 300, weight: bold, color: "#101820", align: center }
+              max_width_ratio: 0.9
+              max_lines: 1
+            - type: text
+              text: $(UNIT)
+              placement: { anchor: center, offset_y: 40 }
+              style: { font_size: 64, weight: bold, color: "#101820", align: center }
+              max_width_ratio: 0.9
+              max_lines: 1
+            - type: rect
+              width: 160
+              height: 10
+              color: "#101820"
+              placement: { anchor: center, offset_y: 150 }
+            - type: text
+              text: $(CAPTION)
+              placement: { anchor: center, offset_y: 290 }
+              style: { font_size: 44, color: "#16323A", align: center }
+              max_width_ratio: 0.8
+              max_lines: 3
+            - type: progress
+              placement: { anchor: bottom-center, offset_y: -120 }
+              color: "#101820"
+              background_color: "#5CC48D"
+              width_ratio: 0.6
+
+    # A custom quote card; the accent color comes from a variable with a fallback.
+    quote:
+        - type: rect
+          width: 900
+          height: 900
+          corner_radius: 48
+          color: $(ACCENT|#16323A)
+          placement: { anchor: center }
+        - type: text
+          text: "„"
+          placement: { anchor: center, offset_y: -330 }
+          style: { font_size: 220, weight: bold, color: "#7DE2A8", align: center }
+          max_width_ratio: 0.3
+        - type: text
+          id: quote
+          text: $(QUOTE)
+          placement: { anchor: center, offset_y: -20 }
+          style: { font_size: 58, weight: bold, align: center }
+          max_width_ratio: 0.72
+          max_lines: 5
+        - type: text
+          text: — $(AUTHOR)
+          placement: { anchor: center, offset_y: 300 }
+          style: { font_size: 40, color: "#7DE2A8", align: center }
+          max_width_ratio: 0.72
+          max_lines: 1
+
+    # An alias: the outro reuses the quote card.
+    outro: quote

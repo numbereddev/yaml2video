@@ -30,13 +30,15 @@ Schema validation checks structure. Composition and render-plan validation addit
 
 Content fields:
 
-| Item | Required | Optional |
+| Item | Required with a classic layout | Optional |
 | --- | --- | --- |
-| `intro` | At least `title` or `image` | `title`, `image`, `subtitle`, `duration`, `audio`, `sound_effects` |
-| slide | `image`, `text` | `id`, `label`, `tip`, `alt_text`, `duration`, `audio`, `sound_effects` |
-| `outro` | `cta` | `image`, `title`, `text`, `duration`, `audio`, `sound_effects` |
+| `intro` | At least `title` or `image` | `title`, `image`, `subtitle`, `duration`, `audio`, `sound_effects`, `layout`, `variables` |
+| slide | `image`, `text` | `id`, `label`, `tip`, `alt_text`, `duration`, `audio`, `sound_effects`, `layout`, `variables` |
+| `outro` | `cta` | `image`, `title`, `text`, `duration`, `audio`, `sound_effects`, `layout`, `variables` |
 
-The video cannot specify layout layers, typography, visual effects, codecs, or FFmpeg filters. Slide `alt_text` is retained in the render plan and shown in CLI dry-run output; it is not burned into the video.
+`layout` selects one of the template's named layouts for that item. `variables` supplies values for a custom layout's `$(NAME)` bindings (strings, numbers, or booleans). With a custom layout, an item needs only what its layout's variables refer to. See [layouts](layouts.md).
+
+The video cannot specify layout layers, typography, visual effects, codecs, or FFmpeg filters (outside [advanced mode](advanced.md)). Slide `alt_text` is retained in the render plan and shown in CLI dry-run output; it is not burned into the video.
 
 ## Template document
 
@@ -48,10 +50,10 @@ Besides `$schema` and `version`, every template requires:
 | `format` | `aspect_ratio`, `width`, `height`, and `fps`. Ratios: `9:16`, `1:1`, `16:9`, `4:5`. |
 | `defaults` | Required `theme` and `timing`; optional `typography`, `media`, and `audio`. |
 | `composition` | Ordered `sections` array, with at least two entries. |
-| `layout` | Required `intro`, `slide`, and `outro` layouts, even when optional content is absent. |
+| `layout` | Required `intro`, `slide`, and `outro` default layouts, even when optional content is absent, plus any number of named layouts. Each is classic, custom, or the name of another layout. See [layouts](layouts.md). |
 
 - `theme`: required `background`, `text_color`, `accent_color`; optional `muted_color`, `panel_color`.
-- `timing`: required `intro_duration`, `slide_duration`, `outro_duration`, and `transition`.
+- `timing`: required `intro_duration`, `slide_duration`, `outro_duration`; optional `transition`.
 - `typography`: optional `font_family`, `title_size`, `body_size`, `tip_size`.
 - `media`: optional `default_fit` and `default_position`; explicit element placement remains required by the schema.
 - `audio`: optional `default_volume`, `fade_in`, `fade_out`, `normalize`, and `ducking`.
@@ -66,9 +68,9 @@ Each section requires a unique `id`, a `role`, and its matching `source`:
 | `slide` | `content.slides` | Requires `repeat: true`; one scene per slide, in array order. |
 | `outro` | `content.outro` | One scene if outro content exists; otherwise skipped. |
 
-Composition must include a slide section. Optional section fields are `default_duration`, `duration_from: item.duration`, and `transition_out`. Intro and outro cannot repeat. Generated scene IDs must also be unique.
+Composition must include a slide section. Optional section fields are `default_duration`, `duration_from: item.duration`, `transition_out`, `transition_in`, and `layout` (the default layout for the section's scenes). Intro and outro cannot repeat. Generated scene IDs must also be unique.
 
-The renderer processes sections in order, binds content to the corresponding role layout, resolves defaults, and builds the scene timeline:
+The renderer processes sections in order, picks each scene's layout (the item's `layout`, else the section's, else the role default), binds content to it, resolves defaults, and builds the scene timeline. Custom layouts bind through `$(NAME)` variables ([layouts](layouts.md)). Classic layouts bind as follows:
 
 - Text elements bind to content fields with the same name; absent content or layout elements are omitted. `visible: false` hides an element.
 - `logo` binds to `assets.logo` when the layout includes it.
@@ -87,19 +89,24 @@ The current renderer honors `item.duration` whether or not `duration_from` is ex
 
 Durations are positive seconds, written as numbers (`3.5`) or strings (`3.5s`). Minutes and millisecond suffixes are unsupported. Sound-effect offsets may be zero.
 
-Each scene uses its section's `transition_out`, falling back to `defaults.timing.transition`. For repeated slides, this also applies between slides. The last rendered scene has no outgoing transition; an explicit `transition_out` on the final composition section is rejected.
+Each scene uses its section's `transition_out`, falling back to `defaults.timing.transition`. Both are optional: without a transition, scenes cut. For repeated slides, this also applies between slides. `transition_out` may also be a list, which rotates across the section's scenes. A section's `transition_in` sets the transition into each of its scenes. When a boundary has both an out and an in transition, the out transition's blend is used, and each supplies its own side effects (see [advanced mode](advanced.md#transitions)). A transition given on only one side covers both. The last rendered scene has no outgoing transition; an explicit `transition_out` on the final composition section, or `transition_in` on the first, is rejected.
 
-Supported transition types:
+Built-in transition types:
 
 ```text
-cut, fade, dissolve,
-wipe-left, wipe-right, wipe-up, wipe-down,
+cut, fade, dissolve, fade-black, fade-white, fade-grays, fade-fast, fade-slow, distance,
+wipe-left, wipe-right, wipe-up, wipe-down, wipe-tl, wipe-tr, wipe-bl, wipe-br,
 slide-left, slide-right, slide-up, slide-down,
-circle-open, circle-close, radial, pixelize,
-zoom-in, cover, reveal, blur
+smooth-left, smooth-right, smooth-up, smooth-down,
+cover (= cover-left), cover-left, cover-right, cover-up, cover-down,
+reveal (= reveal-left), reveal-left, reveal-right, reveal-up, reveal-down,
+circle-open, circle-close, circle-crop, rect-crop, radial, pixelize, zoom-in, blur,
+horz-open, horz-close, vert-open, vert-close, diag-tl, diag-tr, diag-bl, diag-br,
+slice-left, slice-right, slice-up, slice-down, squeeze-h, squeeze-v,
+wind-left, wind-right, wind-up, wind-down
 ```
 
-Non-cut transitions overlap adjacent scenes and must be strictly shorter than both. A `cut` has no overlap; its schema-required positive `duration` is ignored.
+A transition type may also name a custom transition defined in `advanced.transitions`. Built-in blends require a `duration`, overlap adjacent scenes, and must be strictly shorter than both. A `cut` has no overlap; any `duration` on it is ignored.
 
 ```text
 next scene start = current scene end - outgoing overlap
@@ -108,7 +115,7 @@ effective duration = sum(scene durations) - sum(overlaps)
 
 ## Layout and visual effects
 
-Every layout has a solid `background`. Required elements are intro `title`, slide `image` and `text`, and outro `cta`. Additional elements are defined in the template schema.
+Every classic layout has a solid `background`. Its required elements are intro `title`, slide `image` and `text`, and outro `cta`; additional elements are defined in the template schema. Custom layouts list their elements freely and stack them in order ([layouts](layouts.md)); the placement, text, media, and effect rules below apply to their elements too.
 
 Elements require `placement.anchor`, optionally with pixel offsets `offset_x` and `offset_y`. Anchors are `top-left`, `top-center`, `top-right`, `center-left`, `center`, `center-right`, `bottom-left`, `bottom-center`, and `bottom-right`.
 
@@ -155,3 +162,7 @@ The CLI writes `output.mp4` next to the video YAML unless `-o` overrides it. Int
 `-n` reports output settings, effective duration, scene start/end times, text/media bindings, effects, audio events, and generated FFmpeg commands without encoding. It does not verify media decoding, installed fonts, or every FFmpeg capability. Actual text rendering requires an FFmpeg build with the `ass` filter and suitable fonts.
 
 Unknown fields are not an extension mechanism: new format fields require schema and renderer support. Named output profiles and automatic template discovery are not current features.
+
+## Advanced mode
+
+Templates and videos may add an optional `advanced` block with element keyframes, keyframe and effect presets, tracks of timed clips and effect layers, and a master loudness stage. Without it, rendering is unchanged. See [advanced mode](advanced.md).

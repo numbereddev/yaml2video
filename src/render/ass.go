@@ -256,49 +256,81 @@ func v2EscapeASS(s string) string {
 	return strings.ReplaceAll(s, "\n", "\\N")
 }
 
-func v2ASSDocument(video VideoSpec, scene ScenePlan, alignments map[int]string) string {
+func v2ASSDocument(video VideoSpec, scene ScenePlan) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "[Script Info]\nScriptType: v4.00+\nPlayResX: %d\nPlayResY: %d\n\n[V4+ Styles]\nFormat: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding\nStyle: Default,Arial,24,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,3,0,0,5,0,0,0,1\n\n[Events]\nFormat: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text\n", video.Width, video.Height)
-	for i, layer := range scene.Layers {
+	animated := false
+	for _, layer := range scene.Layers {
+		animated = animated || layer.Kind == "text" && layer.Animation != nil
+	}
+	writeV2ASSHeader(&b, video, animated)
+	for _, layer := range scene.Layers {
 		if layer.Kind != "text" {
 			continue
 		}
-		bold := 0
-		if len(layer.Spans) > 0 && layer.Spans[0].Bold {
-			bold = 1
+		if layer.Animation != nil {
+			writeAnimatedText(&b, layer, layer.Align, 0, scene.Duration)
+			continue
 		}
-		font := strings.NewReplacer("{", "", "}", "", "\\", "").Replace(layer.Font)
-		value := ""
-		for _, span := range layer.Spans {
-			value += v2EscapeASS(span.Content)
-		}
-		tags := ""
-		fadeIn, fadeOut := 0, 0
-		for _, fx := range layer.Effects {
-			switch fx.Type {
-			case "text_shadow":
-				tags += fmt.Sprintf("\\4c%s\\4a%s\\xshad%g\\yshad%g\\blur%g", v2ASSColor(fx.Color), v2ASSAlpha(fx.Opacity), fx.OffsetX, fx.OffsetY, fx.Blur)
-			case "text_outline", "text_glow":
-				width := fx.Width
-				if fx.Type == "text_glow" {
-					width = math.Max(1, fx.Blur*2)
-				}
-				tags += fmt.Sprintf("\\3c%s\\3a%s\\bord%g\\blur%g", v2ASSColor(fx.Color), v2ASSAlpha(fx.Opacity), width, fx.Blur)
-			case "fade":
-				fadeIn, fadeOut = int(fx.FadeIn.Milliseconds()), int(fx.FadeOut.Milliseconds())
-			}
-		}
-		if fadeIn > 0 || fadeOut > 0 {
-			tags += fmt.Sprintf("\\fad(%d,%d)", fadeIn, fadeOut)
-		}
-		alignment, x := 5, layer.X+layer.Width/2
-		switch alignments[i] {
-		case "left":
-			alignment, x = 4, layer.X
-		case "right":
-			alignment, x = 6, layer.X+layer.Width
-		}
-		fmt.Fprintf(&b, "Dialogue: 0,%s,%s,Default,,0,0,0,,{\\an%d\\pos(%d,%d)\\fn%s\\fs%d\\c%s\\b%d%s}%s\n", v2ASSTime(0), v2ASSTime(scene.Duration), alignment, x, layer.Y+layer.Height/2, font, layer.FontSize, v2ASSColor(layer.Color), bold, tags, value)
+		writeStaticText(&b, layer, layer.Align, "Default", 0, scene.Duration)
 	}
 	return b.String()
+}
+
+// The Default style draws borders as opaque boxes (BorderStyle 3), which v2
+// text relies on. Advanced-mode text uses the Advanced style instead, where
+// borders follow the glyphs, so text_glow and text_outline surround the letters.
+const advancedASSStyle = "Style: Advanced,Arial,24,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,5,0,0,0,1\n"
+
+func writeV2ASSHeader(b *strings.Builder, video VideoSpec, advanced bool) {
+	fmt.Fprintf(b, "[Script Info]\nScriptType: v4.00+\nPlayResX: %d\nPlayResY: %d\n\n[V4+ Styles]\nFormat: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding\nStyle: Default,Arial,24,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,3,0,0,5,0,0,0,1\n", video.Width, video.Height)
+	if advanced {
+		b.WriteString(advancedASSStyle)
+	}
+	b.WriteString("\n[Events]\nFormat: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text\n")
+}
+
+// v2TextParts returns the dialogue pieces shared by static and animated text:
+// the \an alignment, anchor position, style and effect tags, fades, and escaped text.
+func v2TextParts(layer LayerPlan, align string) (alignment, x, y int, style, tags string, fadeIn, fadeOut int, value string) {
+	bold := 0
+	if len(layer.Spans) > 0 && layer.Spans[0].Bold {
+		bold = 1
+	}
+	font := strings.NewReplacer("{", "", "}", "", "\\", "").Replace(layer.Font)
+	for _, span := range layer.Spans {
+		value += v2EscapeASS(span.Content)
+	}
+	for _, fx := range layer.Effects {
+		switch fx.Type {
+		case "text_shadow":
+			tags += fmt.Sprintf("\\4c%s\\4a%s\\xshad%g\\yshad%g\\blur%g", v2ASSColor(fx.Color), v2ASSAlpha(fx.Opacity), fx.OffsetX, fx.OffsetY, fx.Blur)
+		case "text_outline", "text_glow":
+			width := fx.Width
+			if fx.Type == "text_glow" {
+				width = math.Max(1, fx.Blur*2)
+			}
+			tags += fmt.Sprintf("\\3c%s\\3a%s\\bord%g\\blur%g", v2ASSColor(fx.Color), v2ASSAlpha(fx.Opacity), width, fx.Blur)
+		case "fade":
+			fadeIn, fadeOut = int(fx.FadeIn.Milliseconds()), int(fx.FadeOut.Milliseconds())
+		}
+	}
+	alignment, x = 5, layer.X+layer.Width/2
+	switch align {
+	case "left":
+		alignment, x = 4, layer.X
+	case "right":
+		alignment, x = 6, layer.X+layer.Width
+	}
+	style = fmt.Sprintf("\\fn%s\\fs%d\\c%s\\b%d", font, layer.FontSize, v2ASSColor(layer.Color), bold)
+	return alignment, x, layer.Y + layer.Height/2, style, tags, fadeIn, fadeOut, value
+}
+
+func writeStaticText(b *strings.Builder, layer LayerPlan, align, assStyle string, start, end time.Duration) {
+	alignment, x, y, style, tags, fadeIn, fadeOut, value := v2TextParts(layer, align)
+	if fadeIn > 0 || fadeOut > 0 {
+		tags += fmt.Sprintf("\\fad(%d,%d)", fadeIn, fadeOut)
+	}
+	for _, span := range layer.visible(start, end) {
+		fmt.Fprintf(b, "Dialogue: 0,%s,%s,%s,,0,0,0,,{\\an%d\\pos(%d,%d)%s%s}%s\n", v2ASSTime(span.Start), v2ASSTime(span.End), assStyle, alignment, x, y, style, tags, value)
+	}
 }

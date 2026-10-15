@@ -130,6 +130,8 @@ On Windows, use `yaml2video.exe` instead. Without `-o`, the output is `output.mp
 - [Server API](docs/server-api.md)
 - YAML schemas: [video](docs/video.schema.json) · [template](docs/template.schema.json)
 - [YAML format and rendering reference](docs/reference.md)
+- [Layouts: named, classic, and custom](docs/layouts.md)
+- [Advanced mode: tracks, keyframes, and effect layers](docs/advanced.md)
 - [Contributing and development setup](CONTRIBUTING.md)
 
 ## License

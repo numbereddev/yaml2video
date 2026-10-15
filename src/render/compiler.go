@@ -863,7 +863,6 @@ func compose(v, t obj, base string) (*Plan, error) {
 	defaults := object(t["defaults"])
 	theme := object(defaults["theme"])
 	timing := object(defaults["timing"])
-	typography := object(defaults["typography"])
 	audioDefaults := object(defaults["audio"])
 	layout := object(t["layout"])
 	content := object(v["content"])
@@ -883,12 +882,17 @@ func compose(v, t obj, base string) (*Plan, error) {
 	}
 
 	sections := object(t["composition"])["sections"].([]any)
-
-	type boundary struct {
-		transition obj
-		index      int
+	if err := validateLayoutNames(layout); err != nil {
+		return nil, err
 	}
-	var boundaries []boundary
+	adv := newAdvancedContext(p, v, t, base)
+	meta := object(v["metadata"])
+
+	// Each scene's own out and in transitions; lists in a section rotate per scene.
+	type sceneTransitions struct {
+		out, in obj
+	}
+	var sceneTr []sceneTransitions
 	ids := map[string]bool{}
 	sceneIDs := map[string]bool{}
 	hasSlides := false
@@ -935,84 +939,22 @@ func compose(v, t obj, base string) (*Plan, error) {
 				return nil, fmt.Errorf("%s: %w", name, err)
 			}
 
-			scene := ScenePlan{ID: name, Duration: d, Background: str(object(layout[role])["background"])}
-			l := object(layout[role])
-			addMedia := func(key string, asset any) error {
-				if asset == nil {
-					return nil
-				}
-				el := object(l[key])
-				if len(el) == 0 {
-					return fmt.Errorf("%s: %s has content but no layout", name, key)
-				}
-				if el["visible"] == false {
-					return nil
-				}
-				source, err := path(base, asset)
-				if err != nil {
-					return err
-				}
-				layer, err := mediaLayer(source, el, object(defaults["media"]), p.Video)
-				if key == "image" && role == "slide" {
-					layer.AltText = str(item["alt_text"])
-				}
-				if err != nil {
-					return fmt.Errorf("%s.%s: %w", name, key, err)
-				}
-				scene.Layers = append(scene.Layers, layer)
-				return nil
+			layoutName, layoutDef, err := resolveLayout(layout, role, section, item)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", name, err)
 			}
-
-			if (role == "intro" || role == "outro") && item["image"] != nil && l["image"] == nil {
-				source, err := path(base, item["image"])
-				if err != nil {
-					return nil, err
+			scene := ScenePlan{ID: name, Duration: d, Role: role, Layout: layoutName, item: item, index: i, total: len(items)}
+			// Bindings carry paths as written; elements resolve them like content paths.
+			scene.bindings = sceneBindings(item, name, role, layoutName, i, len(items), str(assets["logo"]), meta)
+			sceneIndex := len(p.Scenes)
+			if isCustomLayout(layoutDef) {
+				elements, background := customLayout(layoutDef, theme)
+				scene.Background = background
+				if err := adv.compileCustomLayout(&scene, sceneIndex, elements); err != nil {
+					return nil, fmt.Errorf("%s: layout %q: %w", name, layoutName, err)
 				}
-				scene.Layers = append(scene.Layers, LayerPlan{Kind: "image", Path: source, Fit: str(choose(object(defaults["media"])["default_fit"], "cover")), X: 0, Y: 0, Width: p.Video.Width, Height: p.Video.Height, Opacity: 1})
-			}
-
-			if (role == "intro" || role == "outro") && l["image"] != nil {
-				if err = addMedia("image", item["image"]); err != nil {
-					return nil, err
-				}
-			} else if role == "slide" {
-				if err = addMedia("image", item["image"]); err != nil {
-					return nil, err
-				}
-			}
-
-			if logo != "" && l["logo"] != nil {
-				if err = addMedia("logo", assets["logo"]); err != nil {
-					return nil, err
-				}
-			}
-
-			alignments := map[int]string{}
-			keys := []string{"title", "subtitle", "label", "text", "tip", "index", "cta"}
-			for _, key := range keys {
-				value := str(item[key])
-				if key == "index" && role == "slide" {
-					value = fmt.Sprintf("%d / %d", i+1, len(items))
-				}
-				if value == "" || l[key] == nil {
-					continue
-				}
-				el := object(l[key])
-				if el["visible"] == false {
-					continue
-				}
-				layer, err := textLayer(value, key, el, typography, theme, p.Video)
-				if err != nil {
-					return nil, fmt.Errorf("%s.%s: %w", name, key, err)
-				}
-				alignments[len(scene.Layers)] = str(object(el["style"])["align"])
-				scene.Layers = append(scene.Layers, layer)
-			}
-
-			if role == "slide" && l["progress"] != nil {
-				if err := addProgress(&scene, object(l["progress"]), i+1, len(items), theme, p.Video); err != nil {
-					return nil, fmt.Errorf("%s.progress: %w", name, err)
-				}
+			} else if err := composeClassicScene(&scene, object(layoutDef), item, p, base, defaults, assets, logo); err != nil {
+				return nil, err
 			}
 
 			track := object(item["audio"])
@@ -1042,12 +984,12 @@ func compose(v, t obj, base string) (*Plan, error) {
 				}
 			}
 
-			scene.ASSPath = filepath.Join(p.WorkDir, "ass", fmt.Sprintf("scene-%04d.ass", len(p.Scenes)))
-			scene.ASS = v2ASSDocument(p.Video, scene, alignments)
-			scene.Output = filepath.Join(p.WorkDir, "scenes", fmt.Sprintf("scene-%04d.mkv", len(p.Scenes)))
+			scene.Output = filepath.Join(p.WorkDir, "scenes", fmt.Sprintf("scene-%04d.mkv", sceneIndex))
 			p.Scenes = append(p.Scenes, scene)
-			tr := object(choose(section["transition_out"], timing["transition"]))
-			boundaries = append(boundaries, boundary{tr, len(p.Scenes) - 1})
+			sceneTr = append(sceneTr, sceneTransitions{
+				out: pick(choose(section["transition_out"], timing["transition"]), i),
+				in:  pick(section["transition_in"], i),
+			})
 		}
 	}
 
@@ -1062,26 +1004,22 @@ func compose(v, t obj, base string) (*Plan, error) {
 	if object(sections[len(sections)-1])["transition_out"] != nil {
 		return nil, fmt.Errorf("transition on final section")
 	}
+	if object(sections[0])["transition_in"] != nil {
+		return nil, fmt.Errorf("transition_in on first section")
+	}
 
-	for i, b := range boundaries {
-		if i == len(boundaries)-1 {
-			break
+	resolver := newTransitionResolver(v, t, adv)
+	var boundaries []*boundaryPlan
+	for i := 0; i < len(p.Scenes)-1; i++ {
+		b, err := resolver.boundary(p.Scenes[i], p.Scenes[i+1], i, sceneTr[i].out, sceneTr[i+1].in)
+		if err != nil {
+			return nil, fmt.Errorf("%s → %s: %w", p.Scenes[i].ID, p.Scenes[i+1].ID, err)
 		}
-
-		tr := b.transition
-		if str(tr["type"]) == "cut" {
+		if b == nil || b.transition.Type == "cut" && len(b.out)+len(b.in)+len(b.shared) == 0 {
 			continue
 		}
-
-		d, err := duration(tr["duration"])
-		if err != nil {
-			return nil, err
-		}
-
-		if d >= p.Scenes[b.index].Duration || d >= p.Scenes[b.index+1].Duration {
-			return nil, fmt.Errorf("transition exceeds adjacent scene duration")
-		}
-		p.Transitions = append(p.Transitions, BoundaryTransition{FromScene: b.index, Type: str(tr["type"]), Duration: d})
+		boundaries = append(boundaries, b)
+		p.Transitions = append(p.Transitions, b.transition)
 	}
 
 	for i := range p.Scenes {
@@ -1099,6 +1037,9 @@ func compose(v, t obj, base string) (*Plan, error) {
 
 	for i := range p.Transitions {
 		p.Transitions[i].Offset = p.Scenes[p.Transitions[i].FromScene+1].Start
+	}
+	if err := placeTransitionEffects(p, boundaries); err != nil {
+		return nil, err
 	}
 
 	if music := object(assets["music"]); len(music) > 0 {
@@ -1134,6 +1075,26 @@ func compose(v, t obj, base string) (*Plan, error) {
 			}
 
 			p.Music.Ducking = &DuckingPlan{Enabled: true, Amount: num(choose(duck["amount"], json.Number("0.65"))), Attack: attack, Release: release}
+		}
+	}
+
+	if err := applyAdvanced(adv); err != nil {
+		return nil, fmt.Errorf("advanced: %w", err)
+	}
+	// Element clips may have animated or modified classic text.
+	for i := range p.Scenes {
+		if p.Scenes[i].ASS != "" {
+			p.Scenes[i].ASS = v2ASSDocument(p.Video, p.Scenes[i])
+		}
+	}
+	// Transition sides render above every other track of their scenes.
+	for _, b := range boundaries {
+		from, to := &p.Scenes[b.transition.FromScene], &p.Scenes[b.transition.FromScene+1]
+		if len(b.out) > 0 {
+			from.Tracks = append(from.Tracks, TrackPlan{ID: "transition-out", Clips: b.out})
+		}
+		if len(b.in) > 0 {
+			to.Tracks = append(to.Tracks, TrackPlan{ID: "transition-in", Clips: b.in})
 		}
 	}
 
