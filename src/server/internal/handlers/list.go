@@ -22,6 +22,7 @@ func (h *Handler) ListRenders(w http.ResponseWriter, r *http.Request) {
 			"url":        outputURL(render.ID),
 		})
 	}
+
 	w.Header().Set("Cache-Control", "no-store")
 	api.JSON(w, http.StatusOK, items)
 }
