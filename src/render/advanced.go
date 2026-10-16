@@ -344,6 +344,9 @@ func (c *advancedContext) addTrack(track obj, trackIndex int) error {
 		if len(plan.Clips) == 0 {
 			continue
 		}
+		if err := attachToText(plan.Clips, c.plan.Video); err != nil {
+			return fmt.Errorf("clip %w", err)
+		}
 		if o.scene == nil {
 			c.plan.Tracks = append(c.plan.Tracks, plan)
 		} else {
@@ -445,6 +448,10 @@ func (c *advancedContext) buildClip(clip obj, o owner, start, length time.Durati
 		plan.Layer = layer
 	case "rect", "circle":
 		w, h := integer(clip["width"]), integer(clip["height"])
+		if attached := clip["cover"] != nil || clip["caret"] != nil; attached {
+			// Sized and placed on their text later (attachToText).
+			w, h = max(w, 1), max(h, 1)
+		}
 		if w < 1 || h < 1 {
 			return nil, fmt.Errorf("width and height must be positive")
 		}
@@ -607,6 +614,9 @@ func (c *advancedContext) buildFolder(clip obj, o owner, start, length time.Dura
 			return ClipPlan{}, fmt.Errorf("%s: %w", label, err)
 		}
 	}
+	if err := attachToText(children.Clips, c.plan.Video); err != nil {
+		return ClipPlan{}, fmt.Errorf("folder clip %w", err)
+	}
 	if clip["effects"] != nil {
 		effect, err := c.effectClip(obj{"type": "effect", "effects": clip["effects"]}, length)
 		if err != nil {
@@ -705,28 +715,15 @@ func clipExtent(clip ClipPlan) ([4]float64, bool) {
 		c := clip.Folder.Canvas
 		box = [4]float64{float64(c.X), float64(c.Y), float64(c.X + c.W), float64(c.Y + c.H)}
 	case "text":
-		// Layout boxes come from estimated glyph widths, so measure generously.
-		var text strings.Builder
-		for _, span := range l.Spans {
-			text.WriteString(span.Content)
+		// The measured lines, plus room for glyphs that reach past their
+		// advances and line boxes (italics, swashes, accents).
+		g := layerGeometry(l, VideoSpec{})
+		box = [4]float64{math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)}
+		for _, line := range g.lines {
+			box = [4]float64{math.Min(box[0], line.X0), math.Min(box[1], line.Top), math.Max(box[2], line.X1), math.Max(box[3], line.Top+g.size)}
 		}
-		lines := strings.Split(text.String(), "\n")
-		longest := 0
-		for _, line := range lines {
-			longest = max(longest, len([]rune(line)))
-		}
-		size := float64(l.FontSize)
-		tw := float64(longest)*size*0.65 + size
-		th := float64(len(lines))*size*1.25 + size
-		x := float64(l.X) + float64(l.Width)/2 - tw/2
-		switch l.Align {
-		case "left":
-			x = float64(l.X) - size/2
-		case "right":
-			x = float64(l.X+l.Width) - tw + size/2
-		}
-		cy := float64(l.Y) + float64(l.Height)/2
-		box = [4]float64{x, cy - th/2, x + tw, cy + th/2}
+		over := g.size / 4
+		box = [4]float64{box[0] - over, box[1] - over, box[2] + over, box[3] + over}
 	case "image", "rect", "circle", "box":
 		box = [4]float64{float64(l.X), float64(l.Y), float64(l.X + l.Width), float64(l.Y + l.Height)}
 	default:
@@ -958,6 +955,11 @@ func (c *advancedContext) targetClips(clips *[]ClipPlan, e elementEdit, o owner)
 			return true, err
 		}
 		for v := range variants {
+			if element.def["cover"] != nil || element.def["caret"] != nil {
+				// Attached to a text: placed like the original.
+				l := element.Layer
+				variants[v].Layer.X, variants[v].Layer.Y, variants[v].Layer.Width, variants[v].Layer.Height = l.X, l.Y, l.Width, l.Height
+			}
 			variants[v].Layer.ShowOnly = &shown
 			variants[v].Layer.HideDuring = nil
 			variants[v].Layer.Animation = overrideAnimation(element.Layer.Animation, e.anim, animStart)

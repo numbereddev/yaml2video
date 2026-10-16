@@ -59,6 +59,9 @@ func (p *Plan) RenderWithProgress(ctx context.Context, callback func(Progress)) 
 	if err := p.writeASS(); err != nil {
 		return err
 	}
+	if err := p.writeFonts(); err != nil {
+		return err
+	}
 	if err := p.measureAudio(ctx); err != nil {
 		return err
 	}
@@ -142,7 +145,7 @@ func buildScene(plan *Plan, scene ScenePlan) *ffmpeg.Stream {
 		base = applyVisualLayer(base, plan, scene, layer)
 	}
 	if scene.ASS != "" {
-		base = base.Filter(ffmpegFilterASS, nil, ffmpeg.KwArgs{"filename": scene.ASSPath})
+		base = base.Filter(ffmpegFilterASS, nil, plan.assArgs(scene.ASSPath))
 	}
 	base = applyTracks(base, plan, scene.Tracks)
 
@@ -687,6 +690,67 @@ func (p *Plan) writeASS() error {
 		}
 	}
 
+	return nil
+}
+
+// bundledFonts lists the font files libass must load from the render's fonts
+// directory: fonts the text uses that aren't installed.
+func (p *Plan) bundledFonts() []string {
+	seen := map[string]bool{}
+	var files []string
+	add := func(l LayerPlan) {
+		if l.face != nil && l.face.Bundled && !seen[l.face.Path] {
+			seen[l.face.Path] = true
+			files = append(files, l.face.Path)
+		}
+	}
+	for _, scene := range p.Scenes {
+		for _, l := range scene.Layers {
+			add(l)
+		}
+	}
+	for _, track := range p.allTracks() {
+		for _, clip := range track.Clips {
+			add(clip.Layer)
+		}
+	}
+	return files
+}
+
+// assArgs are the arguments of an ass filter drawing filename.
+func (p *Plan) assArgs(filename string) ffmpeg.KwArgs {
+	args := ffmpeg.KwArgs{"filename": filename}
+	if len(p.bundledFonts()) > 0 {
+		args["fontsdir"] = filepath.Join(p.WorkDir, "fonts")
+	}
+	return args
+}
+
+// writeFonts copies the bundled fonts into the render's fonts directory.
+func (p *Plan) writeFonts() error {
+	// Fonts from earlier renders could shadow this one's by name.
+	dir := filepath.Join(p.WorkDir, "fonts")
+	if err := os.RemoveAll(dir); err != nil {
+		return err
+	}
+	files := p.bundledFonts()
+	if len(files) == 0 {
+		return nil
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	for i, file := range files {
+		data, err := os.ReadFile(file)
+		if err != nil {
+			return fmt.Errorf("font %s: %w", file, err)
+		}
+		// Numbered, so fonts from different folders can't collide.
+		name := fmt.Sprintf("%02d-%s", i, filepath.Base(file))
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

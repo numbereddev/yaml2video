@@ -3,6 +3,7 @@ package render
 import (
 	"fmt"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -11,6 +12,7 @@ import (
 const (
 	assScriptInfo = "[Script Info]\n" +
 		"ScriptType: v4.00+\n" +
+		"Kerning: yes\n" +
 		"PlayResX: %d\n" +
 		"PlayResY: %d\n\n"
 
@@ -276,8 +278,9 @@ const advancedASSStyle = "Style: Advanced,Arial,24,&H00FFFFFF,&H00FFFFFF,&H00000
 
 func writeV2ASSHeader(b *strings.Builder, video VideoSpec, advanced bool) {
 	// WrapStyle 2: text arrives wrapped, so libass must not wrap it again, not
-	// even when keyframes scale a line beyond the frame.
-	fmt.Fprintf(b, "[Script Info]\nScriptType: v4.00+\nWrapStyle: 2\nPlayResX: %d\nPlayResY: %d\n\n[V4+ Styles]\nFormat: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding\nStyle: Default,Arial,24,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,3,0,0,5,0,0,0,1\n", video.Width, video.Height)
+	// even when keyframes scale a line beyond the frame. Kerning is on, as in
+	// the shaping that measures the text.
+	fmt.Fprintf(b, "[Script Info]\nScriptType: v4.00+\nWrapStyle: 2\nKerning: yes\nPlayResX: %d\nPlayResY: %d\n\n[V4+ Styles]\nFormat: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding\nStyle: Default,Arial,24,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,3,0,0,5,0,0,0,1\n", video.Width, video.Height)
 	if advanced {
 		b.WriteString(advancedASSStyle)
 	}
@@ -287,8 +290,9 @@ func writeV2ASSHeader(b *strings.Builder, video VideoSpec, advanced bool) {
 // v2TextParts returns the dialogue pieces shared by static and animated text:
 // the \an alignment, anchor position, style and effect tags, fades, and escaped text.
 func v2TextParts(layer LayerPlan, align string) (alignment, x, y int, style, tags string, fadeIn, fadeOut int, value string) {
-	bold := 0
-	if len(layer.Spans) > 0 && layer.Spans[0].Bold {
+	// \b takes a weight (100–900) as well as 0 and 1.
+	bold := layer.Weight
+	if bold == 0 && len(layer.Spans) > 0 && layer.Spans[0].Bold {
 		bold = 1
 	}
 	font := strings.NewReplacer("{", "", "}", "", "\\", "").Replace(layer.Font)
@@ -394,10 +398,7 @@ func revealAt(layer LayerPlan, t time.Duration) func(char, line int) bool {
 		r = *layer.Reveal
 	}
 	chars, lines := textCounts(layer)
-	count := func(name string, v RevealValue, total int) int {
-		n := layer.Animation.ValueOf(name, t, v.of(total), float64(total))
-		return int(math.Floor(math.Max(0, math.Min(float64(total), n)) + 1e-9))
-	}
+	count := func(name string, v RevealValue, total int) int { return revealCount(layer, name, v, total, t) }
 	c0, c1 := count("chars_start", r.CharsStart, chars), count("chars_end", r.CharsEnd, chars)
 	l0, l1 := count("lines_start", r.LinesStart, lines), count("lines_end", r.LinesEnd, lines)
 	matched := matchedChars(layer)
@@ -409,19 +410,29 @@ func revealAt(layer LayerPlan, t time.Duration) func(char, line int) bool {
 	}
 }
 
+// revealCount is a reveal property's count at t, its rest value v when it
+// isn't animated, limited to 0–total. Counts between whole numbers (while
+// animating) round down.
+func revealCount(layer LayerPlan, name string, v RevealValue, total int, t time.Duration) int {
+	n := layer.Animation.ValueOf(name, t, v.of(total), float64(total))
+	return int(math.Floor(math.Max(0, math.Min(float64(total), n)) + 1e-9))
+}
+
 // matchedChars marks the characters (line breaks excluded) a text layer's
 // match covers, or returns nil without a match.
 func matchedChars(layer LayerPlan) []bool {
 	if layer.Match == nil {
 		return nil
 	}
-	var text strings.Builder
-	for _, span := range layer.Spans {
-		text.WriteString(span.Content)
-	}
-	content := text.String()
+	return patternChars(layer, layer.Match)
+}
+
+// patternChars marks the characters (line breaks excluded) re's matches
+// cover in a text layer: each match's first group, when re has groups.
+func patternChars(layer LayerPlan, re *regexp.Regexp) []bool {
+	content := spanText(layer)
 	covered := make([]bool, len(content)) // by byte
-	for _, m := range layer.Match.FindAllStringSubmatchIndex(content, -1) {
+	for _, m := range re.FindAllStringSubmatchIndex(content, -1) {
 		from, to := m[0], m[1]
 		if len(m) > 2 { // the first group, when the pattern has groups
 			from, to = m[2], m[3]

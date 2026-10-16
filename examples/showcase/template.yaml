@@ -123,8 +123,9 @@ layout:
                     keyframes: [{ at: 0s, scale: 1 }, { at: -0s, scale: 1.05 }]
 
     # ── Code editor: a folder of yaml2video primitives over one card image ──
-    # The video supplies the code as aligned color layers (spaces elsewhere)
-    # and the typing/cursor presets; everything else is fixed here.
+    # The video supplies the code, the string to highlight, and the typing
+    # presets; everything else is fixed here. The cursor and the highlight are
+    # placed on the measured glyphs, so they fit whatever font draws the code.
     code:
         background: "#0B0B0D"
         duration: 4s
@@ -165,19 +166,17 @@ layout:
                         { font_size: 50, font_family: "Fira Code", color: "#3A3A44", align: left }
                     max_width_ratio: 0.1
                     keyframes: typing-rows
-                  # The highlight sits under the code and grows out of its center.
+                  # The highlight sits under the code, on the characters the
+                  # code-highlight layer shows, and grows out of its center.
                   - type: rect
                     id: highlight
                     start: 2.6s
-                    width: 312
-                    height: 56
                     corner_radius: 10
                     color: "#D7FF3E"
-                    placement: { anchor: top-left, offset_x: 428, offset_y: 1134 }
+                    cover: { text: code-highlight, padding_x: 6, padding_y: 3 }
                     keyframes: [{ at: 0s, scale_x: 0, ease: ease-out }, { at: 0.3s, scale_x: 1 }]
                   # Syntax colors: the same $(CODE) four times, each layer drawing only
                   # what its match covers, all typed by one shared preset.
-                  # Fira Code at 50 px: a character is 25 px wide, a line 50 px tall.
                   - {
                         type: text,
                         id: code-keys,
@@ -259,26 +258,13 @@ layout:
                             },
                         max_width_ratio: 0.8,
                     }
-                  # The cursor: the code turned into full blocks (plus one after the
-                  # end), of which a one-character reveal window shows the cell after
-                  # the typed text. It leaves when the highlight lands.
-                  - {
-                        type: text,
-                        id: cursor,
-                        duration: 2.6s,
-                        text: "$(CODE) ",
-                        replace: { pattern: '[^\n]', with: "█" },
-                        placement: { anchor: center-left, offset_x: 184, offset_y: 52 },
-                        style:
-                            {
-                                font_size: 50,
-                                font_family: "Fira Code",
-                                color: "#D7FF3E",
-                                align: left,
-                            },
-                        max_width_ratio: 0.8,
-                        keyframes: cursor-window,
-                    }
+                  # The cursor: a character cell that follows the typed text. It
+                  # leaves when the highlight lands.
+                  - type: rect
+                    id: cursor
+                    duration: 2.6s
+                    color: "#D7FF3E"
+                    caret: { text: code-keys }
                   # A short jolt when the highlight lands moves the whole editor.
                   - {
                         type: effect,
@@ -1130,15 +1116,12 @@ layout:
                     keyframes: [{ at: 0.45s, chars_end: 0 }, { at: 1.15s, chars_end: "100%" }]
                   - type: rect
                     width: 20
-                    height: 40
                     color: "#D7FF3E"
-                    placement: { anchor: top-left, offset_x: 130, offset_y: 850 }
+                    caret: { text: cmd }
                     duration: 1.45s
                     keyframes:
                         [
                             { at: 0s, opacity: 1, ease: step },
-                            { at: 0.45s, x: 0 },
-                            { at: 1.15s, x: 460, ease: step },
                             { at: 1.2s, opacity: 0, ease: step },
                             { at: 1.3s, opacity: 1 },
                         ]
@@ -1359,9 +1342,7 @@ advanced:
             - { at: 2.5s, chars_end: "100%" }
         typing-rows:
             - { at: 0s, lines_end: "100%" }
-        cursor-window:
-            - { at: 0s, chars_start: 0, chars_end: 0 }
-            # The equalizer: one kick per beat, four intensities.
+        # The equalizer: one kick per beat, four intensities.
         pulse-a:
             - { at: 0s, height: 460, ease: ease-out }
             - { at: 0.4s, height: 73.6, ease: linear }

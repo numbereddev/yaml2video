@@ -458,7 +458,8 @@ func compileAudioSource(layer project.Layer, plan LayerPlan) (LayerPlan, error) 
 }
 
 func compileTextLayer(p *project.Project, layer project.Layer, plan LayerPlan) (LayerPlan, error) {
-	plan.Font = p.Defaults.Text.Font
+	plan.face = defaultFonts.face(p.Defaults.Text.Font, 400, 0)
+	plan.Font = plan.face.Name
 	plan.FontSize = p.Defaults.Text.Size
 	if layer.Size > 0 {
 		plan.FontSize = layer.Size
@@ -484,7 +485,7 @@ func compileTextLayer(p *project.Project, layer project.Layer, plan LayerPlan) (
 		return plan, fmt.Errorf("text content is required")
 	}
 
-	metrics := measureText(spans, plan.FontSize)
+	metrics := measureText(spans, plan.Font, plan.FontSize)
 	layout := textLayout(layer.LayerLayout, metrics)
 	bounds, err := resolveTransform(p.Video.Width, p.Video.Height, layout, layer.Transform)
 	if err != nil {
@@ -498,8 +499,8 @@ func compileTextLayer(p *project.Project, layer project.Layer, plan LayerPlan) (
 
 	if layer.Width != nil {
 		plan.WrapWidth = plan.Width
-		spans = wrapTextSpans(spans, plan.WrapWidth, plan.FontSize)
-		metrics = measureText(spans, plan.FontSize)
+		spans = wrapTextSpans(spans, plan.WrapWidth, plan.Font, plan.FontSize)
+		metrics = measureText(spans, plan.Font, plan.FontSize)
 
 		if layer.Height == nil {
 			layout = textLayout(layer.LayerLayout, metrics)
@@ -876,6 +877,16 @@ func compose(v, t obj, base string) (*Plan, error) {
 		WorkDir: filepath.Join(base, ".yaml2video"),
 		Output:  filepath.Join(base, "output.mp4"),
 	}
+	// Font files in fonts/ next to the video, and any listed in the template.
+	fontDirs := []string{filepath.Join(base, "fonts")}
+	for _, entry := range list(object(defaults["typography"])["fonts"]) {
+		dir, err := path(base, entry)
+		if err != nil {
+			return nil, fmt.Errorf("defaults.typography.fonts: %w", err)
+		}
+		fontDirs = append(fontDirs, dir)
+	}
+	p.Video.fonts = fontBookFor(fontDirs)
 
 	logo, err := path(base, assets["logo"])
 	if err != nil {
@@ -1241,22 +1252,33 @@ func textLayer(value, key string, el, typography, theme obj, video VideoSpec) (L
 		return LayerPlan{}, fmt.Errorf("text width empty")
 	}
 
-	maxChars := max(1, int(float64(width)/(float64(size)*0.4)))
-	// Explicit line breaks are kept; each paragraph is wrapped on its own. A
-	// paragraph that fits is kept verbatim, spaces included, so indented code
-	// stays indented and texts layered over each other keep the same character
-	// positions; a wrapped one keeps its indentation on its first line.
+	font := str(choose(style["font_family"], typography["font_family"], "Arial"))
+	weight, err := parseWeight(style["weight"])
+	if err != nil {
+		return LayerPlan{}, err
+	}
+	face := fontsOf(video).face(font, weight, float64(size))
+	letter, word := num(style["letter_spacing"]), num(style["word_spacing"])
+	fits := func(line string) bool {
+		return face.lineWidth([]rune(line), float64(size), letter, word) <= float64(width)
+	}
+
+	// Explicit line breaks are kept; each paragraph is wrapped on its own, at
+	// the widths its font measures. A paragraph that fits is kept verbatim,
+	// spaces included, so indented code stays indented and texts layered over
+	// each other keep the same character positions; a wrapped one keeps its
+	// indentation on its first line.
 	var lines []string
 	for paragraph := range strings.SplitSeq(strings.ReplaceAll(value, "\r\n", "\n"), "\n") {
 		paragraph = strings.ReplaceAll(paragraph, "\t", "    ")
-		if len([]rune(paragraph)) <= maxChars {
+		if fits(paragraph) {
 			lines = append(lines, paragraph)
 			continue
 		}
 		line := paragraph[:len(paragraph)-len(strings.TrimLeft(paragraph, " "))]
 		words := 0
 		for word := range strings.FieldsSeq(paragraph) {
-			if words > 0 && len([]rune(line))+1+len([]rune(word)) > maxChars {
+			if words > 0 && !fits(line+" "+word) {
 				lines = append(lines, line)
 				line, words = "", 0
 			}
@@ -1287,14 +1309,8 @@ func textLayer(value, key string, el, typography, theme obj, video VideoSpec) (L
 		return LayerPlan{}, fmt.Errorf("text color %q is unsupported by ASS renderer", color)
 	}
 
-	font := str(choose(style["font_family"], typography["font_family"], "Arial"))
-	weight := str(style["weight"])
-	if weight == "medium" {
-		return LayerPlan{}, fmt.Errorf("medium font weight requires render.Plan support")
-	}
-
-	return LayerPlan{Kind: "text", X: x, Y: y, Width: width, Height: height, WrapWidth: width, Font: font, FontSize: size, Color: color, Opacity: 1, Spans: []TextSpan{{Content: strings.Join(lines, "\n"), Color: color, Bold: weight == "bold"}}, Effects: fx,
-		LetterSpacing: num(style["letter_spacing"]), WordSpacing: num(style["word_spacing"])}, nil
+	return LayerPlan{Kind: "text", X: x, Y: y, Width: width, Height: height, WrapWidth: width, Font: face.Name, Weight: face.Weight, face: face, FontSize: size, Color: color, Opacity: 1, Spans: []TextSpan{{Content: strings.Join(lines, "\n"), Color: color, Bold: weight >= 600}}, Effects: fx,
+		LetterSpacing: letter, WordSpacing: word}, nil
 }
 
 func ratio(v any) float64 {

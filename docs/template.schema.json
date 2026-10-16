@@ -297,12 +297,38 @@
 			"type": "string",
 			"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
 		},
+		"text_cover": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["text"],
+			"description": "Sizes and places the clip on the characters a text clip shows (its own match, if any), measured with the text's font: a highlight. Replaces width, height, and placement.",
+			"properties": {
+				"text": { "$ref": "#/$defs/element_id", "description": "The id of a text clip in the same layout, track, or folder (or a folder inside it)." },
+				"match": { "type": "string", "minLength": 1, "description": "Covers only what this regular expression matches (its first group, if any); $(VARIABLE) bindings are allowed." },
+				"padding_x": { "type": "number" },
+				"padding_y": { "type": "number" }
+			}
+		},
+		"text_caret": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["text"],
+			"description": "Moves the clip along a text clip as it types: its left edge after the last revealed character (chars_end), centered on that line, every frame. Replaces placement; width and height default to a character cell (the font's 0, one line tall).",
+			"properties": {
+				"text": { "$ref": "#/$defs/element_id", "description": "The id of a text clip in the same layout, track, or folder (or a folder inside it)." },
+				"offset_x": { "type": "number" },
+				"offset_y": { "type": "number" }
+			}
+		},
 		"image_clip": {
 			"type": "object",
 			"additionalProperties": false,
-			"required": ["type", "path", "placement"],
+			"required": ["type", "path"],
+			"anyOf": [{ "required": ["placement"] }, { "required": ["cover"] }, { "required": ["caret"] }],
 			"properties": {
 				"type": { "const": "image" },
+				"cover": { "$ref": "#/$defs/text_cover" },
+				"caret": { "$ref": "#/$defs/text_caret" },
 				"id": { "$ref": "#/$defs/element_id" },
 				"optional": { "$ref": "#/$defs/optional" },
 				"start": { "$ref": "#/$defs/time_point" },
@@ -321,9 +347,12 @@
 		"shape_clip": {
 			"type": "object",
 			"additionalProperties": false,
-			"required": ["type", "width", "height", "color", "placement"],
+			"required": ["type", "color"],
+			"anyOf": [{ "required": ["width", "height", "placement"] }, { "required": ["cover"] }, { "required": ["caret"] }],
 			"properties": {
 				"type": { "type": "string", "enum": ["rect", "circle"] },
+				"cover": { "$ref": "#/$defs/text_cover" },
+				"caret": { "$ref": "#/$defs/text_caret" },
 				"id": { "$ref": "#/$defs/element_id" },
 				"optional": { "$ref": "#/$defs/optional" },
 				"start": { "$ref": "#/$defs/time_point" },
@@ -495,7 +524,16 @@
 			"type": "object",
 			"additionalProperties": false,
 			"properties": {
-				"font_family": { "type": "string", "minLength": 1 },
+				"font_family": {
+					"type": "string",
+					"minLength": 1,
+					"description": "A font family: from the project's fonts, installed, or any Google Fonts family (downloaded and cached on first use)."
+				},
+				"fonts": {
+					"type": "array",
+					"items": { "type": "string", "minLength": 1 },
+					"description": "Font files or directories to use before installed fonts, relative to the video YAML. A fonts/ directory next to the video is always used."
+				},
 				"title_size": { "type": "integer", "minimum": 1 },
 				"body_size": { "type": "integer", "minimum": 1 },
 				"tip_size": { "type": "integer", "minimum": 1 }
@@ -772,7 +810,13 @@
 			"properties": {
 				"font_family": { "type": "string", "minLength": 1 },
 				"font_size": { "type": "integer", "minimum": 1 },
-				"weight": { "type": "string", "enum": ["normal", "medium", "bold"] },
+				"weight": {
+					"description": "A weight name or a number from 1 to 1000, as in CSS (400 regular, 700 bold). Fonts without that weight use the nearest one they have.",
+					"anyOf": [
+						{ "type": "string", "enum": ["thin", "extralight", "light", "normal", "regular", "medium", "semibold", "bold", "extrabold", "black"] },
+						{ "type": "integer", "minimum": 1, "maximum": 1000 }
+					]
+				},
 				"color": { "$ref": "#/$defs/color" },
 				"align": { "type": "string", "enum": ["left", "center", "right"] },
 				"line_spacing": { "type": "number", "minimum": 0 },

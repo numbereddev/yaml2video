@@ -31,6 +31,9 @@ All notable changes to the project are documented here.
 - Scene templates: custom layouts can set `duration`, `transition_out`, `transition_in`, and `tracks` for every scene that uses them; content items can override `transition_out` and `transition_in`.
 - Text style `letter_spacing` and `word_spacing`.
 - `width` and `height` keyframes for rect, circle, and image clips: they resize around the center without stretching corner radii or resampling images.
+- Fonts are resolved to files and text is measured with them (HarfBuzz shaping, as libass draws it) instead of estimated: from `fonts/` next to the video or `defaults.typography.fonts`, installed fonts, any Google Fonts family (downloaded and cached on first use), or a bundled Go font. Fonts that aren't installed are handed to FFmpeg with the render. `YAML2VIDEO_OFFLINE`, `YAML2VIDEO_SYSTEM_FONTS=off`, and `YAML2VIDEO_CACHE_DIR` control this.
+- Text `weight` takes any CSS weight, by name (`thin` to `black`) or number (1–1000). Variable fonts are drawn at exactly that weight and at the optical size of the text: Google Fonts serves the instance, and project or installed variable fonts are instanced into static fonts, since libass can't set axes itself.
+- `cover` and `caret` place rect, circle, and image clips on a text's measured glyphs: a highlight around the characters a text shows, or a cursor that follows a text as it types.
 - Text `match` (show only the characters a regular expression covers, keeping the others' space) and `replace` (rewrite the text before layout), so one text can be layered into syntax colors or a cursor grid.
 - Template `format.crf` sets the quality of the final encode.
 
@@ -39,6 +42,7 @@ All notable changes to the project are documented here.
 - Video items no longer require `image`/`text` (slides), `title` or `image` (intro), or `cta` (outro) in the schema; the requirement now comes from the selected layout and is checked when loading.
 - Track text renders at its position in the track rather than above all of the track's other clips.
 - Keyframed text is sampled every frame instead of every 50 ms, so motion and reveals follow their curves exactly.
+- Text wraps at measured widths instead of an estimated 0.4 em per character, and ASS documents turn kerning on, as the measurement does.
 - The final encode uses CRF 16 (was x264's default 23), the slow preset, and adaptive quantization, which removes banding and smearing on flat graphics and small text.
 - Text lines that fit keep their spacing, including indentation; leading and repeated spaces render as hard spaces.
 - A layer whose scale keyframes reach 0 is invisible instead of a one-pixel sliver.

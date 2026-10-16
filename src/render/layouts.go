@@ -226,6 +226,9 @@ func (c *advancedContext) compileCustomLayout(scene *ScenePlan, sceneIndex int, 
 			return fmt.Errorf("%s: %w", label, err)
 		}
 	}
+	if err := attachToText(track.Clips, c.plan.Video); err != nil {
+		return fmt.Errorf("element %w", err)
+	}
 	scene.Tracks = append([]TrackPlan{track}, scene.Tracks...)
 	return nil
 }

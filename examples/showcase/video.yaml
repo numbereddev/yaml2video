@@ -121,8 +121,7 @@ content:
 advanced:
     # Typing fitted to this code: each line pauses, its indentation appears
     # at once, and the rest types steadily.
-    # Values are character and line counts. The cursor is a one-character
-    # reveal window over a text of blocks, one cell after the typed text.
+    # Values are character and line counts; the cursor follows by itself.
     keyframes:
         typing:
             - { at: 0s, chars_end: 0, ease: step }
@@ -149,19 +148,3 @@ advanced:
             - { at: 1.496s, lines_end: 5, ease: step }
             - { at: 1.892s, lines_end: 6, ease: step }
             - { at: 2.162s, lines_end: 7, ease: step }
-        cursor-window:
-            - { at: 0s, chars_start: 0, chars_end: 1, ease: step }
-            - { at: 0.5s, chars_start: 0, chars_end: 1, ease: linear }
-            - { at: 0.668s, chars_start: 8, chars_end: 9, ease: step }
-            - { at: 0.728s, chars_start: 10, chars_end: 11, ease: linear }
-            - { at: 0.854s, chars_start: 16, chars_end: 17, ease: step }
-            - { at: 0.914s, chars_start: 20, chars_end: 21, ease: linear }
-            - { at: 1.166s, chars_start: 32, chars_end: 33, ease: step }
-            - { at: 1.226s, chars_start: 36, chars_end: 37, ease: linear }
-            - { at: 1.436s, chars_start: 46, chars_end: 47, ease: step }
-            - { at: 1.496s, chars_start: 52, chars_end: 53, ease: linear }
-            - { at: 1.832s, chars_start: 68, chars_end: 69, ease: step }
-            - { at: 1.892s, chars_start: 74, chars_end: 75, ease: linear }
-            - { at: 2.102s, chars_start: 84, chars_end: 85, ease: step }
-            - { at: 2.162s, chars_start: 90, chars_end: 91, ease: linear }
-            - { at: 2.498s, chars_start: 106, chars_end: 107, ease: step }

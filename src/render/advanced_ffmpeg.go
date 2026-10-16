@@ -75,7 +75,7 @@ func composite(base *ffmpeg.Stream, plan *Plan, tracks []TrackPlan, s space, can
 					base = textClipPanel(base, text, canvas)
 				}
 				i--
-				args := ffmpeg.KwArgs{"filename": filepath.Join(plan.WorkDir, "ass", runASSName(track, run))}
+				args := plan.assArgs(filepath.Join(plan.WorkDir, "ass", runASSName(track, run)))
 				if canvas {
 					args["alpha"] = 1
 				}

@@ -34,6 +34,8 @@ type VideoSpec struct {
 	Background string
 	// CRF is the x264 quality of the final encode (lower is better); zero uses defaultCRF.
 	CRF int
+	// fonts resolves the families text uses; nil uses defaultFonts.
+	fonts *fontBook
 }
 
 // defaultCRF keeps flat graphics and small text free of visible artifacts.
@@ -150,6 +152,10 @@ type LayerPlan struct {
 	Color    string
 	Font     string
 	FontSize int
+	// Weight (100–900) picks the face of Font; zero uses the spans' bold.
+	Weight int
+	// face is the font Font resolved to, which measures the text.
+	face *fontFace
 
 	SourceOffset    time.Duration
 	Duration        time.Duration // Zero uses the whole scene duration.

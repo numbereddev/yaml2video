@@ -54,7 +54,7 @@ Besides `$schema` and `version`, every template requires:
 
 - `theme`: required `background`, `text_color`, `accent_color`; optional `muted_color`, `panel_color`.
 - `timing`: required `intro_duration`, `slide_duration`, `outro_duration`; optional `transition`.
-- `typography`: optional `font_family`, `title_size`, `body_size`, `tip_size`.
+- `typography`: optional `font_family`, `fonts`, `title_size`, `body_size`, `tip_size`. See [fonts](#fonts).
 - `media`: optional `default_fit` and `default_position`; explicit element placement remains required by the schema.
 - `audio`: optional `default_volume`, `fade_in`, `fade_out`, `normalize`, and `ducking`.
 
@@ -119,7 +119,26 @@ Every classic layout has a solid `background`. Its required elements are intro `
 
 Elements require `placement.anchor`, optionally with pixel offsets `offset_x` and `offset_y`. Anchors are `top-left`, `top-center`, `top-right`, `center-left`, `center`, `center-right`, `bottom-left`, `bottom-center`, and `bottom-right`.
 
-Text supports font family, size, normal/bold weight, color, alignment, maximum width, and maximum line count. Text exceeding `max_lines` is rejected, not truncated. The schema also permits `weight: medium` and `line_spacing`, but the current renderer rejects medium weight and nonzero line spacing. Media supports `cover`/`contain`, maximum width/height ratios, and `rectangle`, `rounded-rectangle`, or `circle` shapes.
+Text supports font family, size, weight, color, alignment, maximum width, and maximum line count. Text exceeding `max_lines` is rejected, not truncated. `weight` is a name (`thin`, `extralight`, `light`, `normal`/`regular`, `medium`, `semibold`, `bold`, `extrabold`, `black`: 100–900) or a number from 1 to 1000, as in CSS; a font without that weight uses its nearest one. The schema also permits `line_spacing`, but the current renderer rejects nonzero line spacing. Media supports `cover`/`contain`, maximum width/height ratios, and `rectangle`, `rounded-rectangle`, or `circle` shapes.
+
+### Fonts
+
+Text is measured with the font file that draws it, shaped (kerning and ligatures included) the way libass lays it out, so wrapping, text boxes, highlights, and carets fit the actual glyphs. A `font_family` resolves, in this order, to:
+
+1. a font file in `fonts/` next to the video YAML, or in the files and directories listed in `defaults.typography.fonts` (relative to the video YAML);
+2. an installed font;
+3. a [Google Fonts](https://fonts.google.com) family, downloaded on first use and cached;
+4. a bundled Go font (Go Mono for families whose names look monospaced, Go otherwise), with a warning.
+
+Variable fonts get exactly the weight a text asks for and, when they have an optical size axis, the optical size of the text's font size, as browsers choose it: a 120 px headline in Bricolage Grotesque gets its display cut, a 28 px caption its text cut. libass can't set a font's axes, so each weight and size becomes a static instance: downloaded as one from Google Fonts, or made from the variable font file for project and installed fonts (cached in the cache directory).
+
+Fonts that aren't installed, and all instances, reach FFmpeg through the render's work directory under family names of their own, so libass draws exactly the font that measured the text, and a render looks the same on any machine that resolves its fonts the same way. Families that aren't on Google Fonts (for example commercial or Fontshare fonts) belong in `fonts/`.
+
+| Environment variable | Effect |
+| --- | --- |
+| `YAML2VIDEO_OFFLINE=1` | Never download fonts. |
+| `YAML2VIDEO_SYSTEM_FONTS=off` | Ignore installed fonts: only project, downloaded, and bundled fonts. |
+| `YAML2VIDEO_CACHE_DIR` | Where downloaded fonts, font instances, Google's family list, and the installed-font index are kept (default: the user cache directory). |
 
 An element's `effects` array specifies semantic effects, not arbitrary filter expressions:
 
@@ -159,7 +178,7 @@ Media paths are checked for readability and regular-file status during loading. 
 
 The CLI writes `output.mp4` next to the video YAML unless `-o` overrides it. Intermediate files go into `.yaml2video` beside the YAML unless `--work-dir` overrides it. Dimensions and frame rate come from the template; codecs and filter graphs are implementation details, not YAML fields.
 
-`-n` reports output settings, effective duration, scene start/end times, text/media bindings, effects, audio events, and generated FFmpeg commands without encoding. It does not verify media decoding, installed fonts, or every FFmpeg capability. Actual text rendering requires an FFmpeg build with the `ass` filter and suitable fonts.
+`-n` reports output settings, effective duration, scene start/end times, text/media bindings, effects, audio events, and generated FFmpeg commands without encoding. It does not verify media decoding or every FFmpeg capability; fonts are resolved (and downloaded if needed) because text layout depends on them. Actual text rendering requires an FFmpeg build with the `ass` filter.
 
 Unknown fields are not an extension mechanism: new format fields require schema and renderer support. Named output profiles and automatic template discovery are not current features.
 

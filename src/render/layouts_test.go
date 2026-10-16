@@ -40,14 +40,6 @@ func clipByID(track *TrackPlan, id string) *ClipPlan {
 	return nil
 }
 
-func spanText(layer LayerPlan) string {
-	var b strings.Builder
-	for _, span := range layer.Spans {
-		b.WriteString(span.Content)
-	}
-	return b.String()
-}
-
 func TestNamedAndCustomLayouts(t *testing.T) {
 	video, tmpl := example(t, "layouts")
 	p, err := Load(video, tmpl)

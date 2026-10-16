@@ -183,7 +183,7 @@ A text can show only part of its characters or lines. `reveal` sets the visible 
 - Percentages suit templates, which don't know the length of the text they will show: `"100%"` is every character of whatever text the variable holds. Counts and percentages mix freely between keyframes.
 - Hidden characters and lines are drawn fully transparent: they keep their space, and the visible text never moves, rewraps, or realigns. `chars_start: 3` leaves the fourth character exactly where it was.
 - Character and line visibility combine; a character shows only when both include it.
-- Animating `chars_end` from 0 to `"100%"` types the text; animating `chars_start` the same way erases it from the front. A window that moves both by the same amount shows a fixed number of characters, for example a one-character block cursor over a text of `█` laid out like the code. The visible range updates every frame; a `step` ease or extra keyframes control the rhythm, for example to type each line at its own pace.
+- Animating `chars_end` from 0 to `"100%"` types the text; animating `chars_start` the same way erases it from the front. A window that moves both by the same amount shows a fixed number of characters. The visible range updates every frame; a `step` ease or extra keyframes control the rhythm, for example to type each line at its own pace.
 
 ### Match and replace
 
@@ -198,8 +198,6 @@ Syntax coloring is then a stack of the same text with different matches and colo
 - { type: text, text: $(CODE), match: '([A-Za-z0-9_]+):', style: { color: "#F3F1EA", ... }, keyframes: typing }   # keys
 - { type: text, text: $(CODE), match: ':', style: { color: "#6E6E78", ... }, keyframes: typing }                 # colons
 - { type: text, text: $(CODE), match: '"[^"]*"', style: { color: "#D7FF3E", ... }, keyframes: typing }           # strings
-# A cursor: the code as full blocks (one more after the end), one block shown at a time.
-- { type: text, text: "$(CODE) ", replace: { pattern: '[^\n]', with: "█" }, keyframes: cursor-window }
 ```
 
 The video can then give the code as an ordinary block scalar:
@@ -211,6 +209,22 @@ variables:
           intro:
             layout: hook
 ```
+
+### Highlights and carets
+
+Text is measured with the font that draws it ([fonts](reference.md#fonts)), so shapes can sit on its glyphs whatever the font. A `rect`, `circle`, or `image` clip names a text clip by `id` (in the same layout, track, or folder, or a folder inside it) in one of two ways:
+
+- `cover: { text, match, padding_x, padding_y }` sizes and places the clip on the box around the characters the text shows (all of them, or those its own `match` covers), narrowed to `match` when given. Spaces at the box's edges don't count. It replaces `width`, `height`, and `placement`.
+- `caret: { text, offset_x, offset_y }` moves the clip with the end of the text's revealed characters (`chars_end`), frame by frame: its left edge after the last revealed character, centered on that line. At a line's end it waits there until the next line's characters appear. `width` and `height` default to a character cell (the font's `0`, one line tall). It replaces `placement`, and the clip can't have `x` or `y` keyframes; others, like a blinking `opacity`, work as usual.
+
+```yaml
+- { type: rect, color: "#D7FF3E", corner_radius: 10, start: 2.6s,
+    cover: { text: code, match: '"YAML file\."', padding_x: 6, padding_y: 3 } }
+- { type: text, id: code, text: $(CODE), keyframes: typing, ... }
+- { type: rect, color: "#D7FF3E", duration: 2.6s, caret: { text: code } }   # a block cursor
+```
+
+Both use the text's rest layout: keyframed `x`, `y`, scale, or rotation of the text itself, and element clips that change it, aren't followed. Put the text and its shapes in a folder to move them together.
 
 ## Effect layers
 

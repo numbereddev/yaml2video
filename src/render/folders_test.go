@@ -1,6 +1,7 @@
 package render
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -411,6 +412,113 @@ func TestSizeKeyframes(t *testing.T) {
 		if _, err := FromBytes([]byte(folderVideo), []byte(broken), t.TempDir()); err == nil {
 			t.Error("expected an error")
 		}
+	}
+}
+
+// A layout whose highlight covers a string of a text and whose cursor follows
+// another text as it types; fonts fall back to Go Mono in tests.
+const attachTemplate = `$schema: x
+version: 2
+template_id: folders
+description: attach
+format: { aspect_ratio: "9:16", width: 1080, height: 1920, fps: 10 }
+defaults:
+  theme: { background: "#000000", text_color: "#FFFFFF", accent_color: "#D7FF3E" }
+  timing: { intro_duration: 2s, slide_duration: 2s, outro_duration: 2s }
+composition:
+  sections:
+    - { id: s, role: slide, source: content.slides, repeat: true }
+    - { id: o, role: outro, source: content.outro, layout: plain }
+layout:
+  intro: card
+  slide: card
+  outro: card
+  plain: [{ type: text, text: $(cta), placement: { anchor: center } }]
+  card:
+    elements:
+      - type: folder
+        id: editor
+        clips:
+          - { type: rect, id: hl, color: "#D7FF3E", corner_radius: 8, cover: { text: code, match: '"value"', padding_x: 6, padding_y: 3 } }
+          - type: text
+            id: code
+            text: "key: \"value\"\nnext: 2"
+            placement: { anchor: center-left, offset_x: 100 }
+            style: { font_family: "Fira Code", font_size: 50, align: left }
+            keyframes: [{ at: 0s, chars_end: 0 }, { at: 1.2s, chars_end: 12 }, { at: 1.3s, chars_end: 13 }]
+          - { type: rect, id: cursor, color: "#FF0000", start: 0.5s, caret: { text: code } }
+`
+
+func TestCoverAndCaret(t *testing.T) {
+	p := loadFolders(t, folderVideo, attachTemplate)
+	clips := layoutTrack(p.Scenes[0]).Clips
+	code := findClip(clips, "code").Layer
+	cell := fontsOf(p.Video).face("Fira Code", 400, 50).offsets([]rune("0"), 50, 0, 0)[1]
+	top := float64(code.Y+code.Height/2) - 50 // two lines of 50 px around the middle
+
+	// The highlight covers `"value"` (characters 5–11) plus padding.
+	hl := findClip(clips, "hl").Layer
+	x0 := math.Round(100 + 5*cell - 6)
+	if hl.X != int(x0) || hl.Width != int(math.Round(100+12*cell+6)-x0) || hl.Y != int(math.Round(top-3)) || hl.Height != 56 {
+		t.Errorf("highlight %d,%d %dx%d, want x %g w %g", hl.X, hl.Y, hl.Width, hl.Height, x0, 7*cell+12)
+	}
+
+	// The cursor is a character cell after the typed text: it starts 0.5 s
+	// into the text's typing (5 characters in), then moves on with it.
+	cursor := findClip(clips, "cursor").Layer
+	if cursor.Width != int(math.Round(cell)) || cursor.Height != 50 {
+		t.Errorf("cursor %dx%d", cursor.Width, cursor.Height)
+	}
+	at := func(sec float64) (float64, float64) {
+		d := time.Duration(sec * float64(time.Second))
+		return float64(cursor.X) + cursor.Animation.Value("x", d, 0), float64(cursor.Y) + cursor.Animation.Value("y", d, 0)
+	}
+	if x, y := at(0); x != math.Round(100+5*cell) || y != math.Round(top) {
+		t.Errorf("cursor starts at %g,%g", x, y)
+	}
+	if x, _ := at(0.55); x != math.Round(100+10*cell) {
+		t.Errorf("cursor at 0.55 s: %g", x)
+	}
+	// After the first line it waits at its end, then jumps to the next line.
+	if x, y := at(0.75); x != math.Round(100+12*cell) || y != math.Round(top) {
+		t.Errorf("cursor at the line's end: %g,%g", x, y)
+	}
+	if x, y := at(0.85); x != math.Round(100+cell) || y != math.Round(top+50) {
+		t.Errorf("cursor on the next line: %g,%g", x, y)
+	}
+	if _, err := p.Commands(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct{ from, to, message string }{
+		{"cover: { text: code,", "cover: { text: nope,", `"nope" is no text`},
+		{"caret: { text: code } }", "caret: { text: code }, keyframes: [{ at: 0s, x: 1 }] }", "can't have x or y"},
+		{"caret: { text: code } }", "caret: { text: code }, cover: { text: code } }", "both cover"},
+	} {
+		broken := strings.Replace(attachTemplate, tc.from, tc.to, 1)
+		if _, err := FromBytes([]byte(folderVideo), []byte(broken), t.TempDir()); err == nil || !strings.Contains(err.Error(), tc.message) {
+			t.Errorf("%s: got %v", tc.message, err)
+		}
+	}
+}
+
+func TestTextWrapsAtMeasuredWidths(t *testing.T) {
+	video := VideoSpec{Width: 1000, Height: 1000}
+	el := obj{"placement": obj{"anchor": "center"}, "style": obj{"font_size": 50.0, "font_family": "Go"}, "max_width_ratio": 0.5}
+	// Narrow letters fit where as many wide ones wrap.
+	narrow, err := textLayer("iiiii iiiii iiiii iiiii", "text", el, obj{}, obj{"text_color": "#FFFFFF"}, video)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wide, err := textLayer("WWWWW WWWWW WWWWW WWWWW", "text", el, obj{}, obj{"text_color": "#FFFFFF"}, video)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(spanText(narrow), "\n") != 0 || strings.Count(spanText(wide), "\n") == 0 {
+		t.Errorf("narrow %q, wide %q", spanText(narrow), spanText(wide))
+	}
+	if narrow.Font != "Go" || narrow.face == nil {
+		t.Errorf("font %q", narrow.Font)
 	}
 }
 
