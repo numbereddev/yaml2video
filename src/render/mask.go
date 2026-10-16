@@ -2,6 +2,8 @@ package render
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
 	ffmpeg "github.com/u2takey/ffmpeg-go"
 )
@@ -14,7 +16,16 @@ func maskAlpha(input *ffmpeg.Stream, mask string) *ffmpeg.Stream {
 	})
 }
 
+// masked reports whether a layer needs an alpha mask for its shape or its
+// animated size.
+func masked(layer LayerPlan) bool {
+	return layer.Shape == "circle" || layer.Shape == "rounded-rectangle" || layer.Animation.Has("width", "height")
+}
+
 func shapeMask(layer LayerPlan) string {
+	if layer.Animation.Has("width", "height") {
+		return sizeMask(layer)
+	}
 	w, h := float64(layer.Width), float64(layer.Height)
 	switch layer.Shape {
 	case "circle":
@@ -30,6 +41,34 @@ func shapeMask(layer LayerPlan) string {
 	default:
 		return "1"
 	}
+}
+
+// sizeMask clips a layer laid out at its largest size (see fitAnimatedSize)
+// to its width and height keyframes at time T, centered, with antialiased
+// edges. Corner radii keep their size: a rounded rectangle keeps its radius
+// (limited to half the shorter side) and a circle becomes a pill.
+func sizeMask(layer LayerPlan) string {
+	anim := layer.Animation
+	hw := fmt.Sprintf("(%s/2)", anim.Expr("width", "T", float64(layer.Width)))
+	hh := fmt.Sprintf("(%s/2)", anim.Expr("height", "T", float64(layer.Height)))
+	r := "0"
+	switch layer.Shape {
+	case "circle":
+		r = fmt.Sprintf("min(%s,%s)", hw, hh)
+	case "rounded-rectangle":
+		radius := fmt.Sprintf("min(%s,%s)/6", hw, hh)
+		if layer.CornerRadius > 0 {
+			radius = strconv.Itoa(layer.CornerRadius)
+		}
+		r = fmt.Sprintf("max(min(%s,min(%s,%s)),0)", radius, hw, hh)
+	}
+	// Signed distance from the pixel center to the rounded box, as coverage.
+	// The keyframe chains are evaluated once per pixel into variables (0–4);
+	// "0*st()" sequences them without ";", which separates filter chains.
+	vars := fmt.Sprintf("0*st(0,%s)+0*st(1,%s)+0*st(2,%s)", hw, hh, strings.NewReplacer(hw, "ld(0)", hh, "ld(1)").Replace(r))
+	vars += fmt.Sprintf("+0*st(3,abs(X+0.5-%s)-ld(0)+ld(2))+0*st(4,abs(Y+0.5-%s)-ld(1)+ld(2))",
+		num6(float64(layer.Width)/2), num6(float64(layer.Height)/2))
+	return vars + "+clip(0.5-hypot(max(ld(3),0),max(ld(4),0))-min(max(ld(3),ld(4)),0)+ld(2),0,1)"
 }
 
 // blurPanel blurs only the previously composited video, never the text or tint.

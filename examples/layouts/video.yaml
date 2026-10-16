@@ -1,0 +1,54 @@
+$schema: ../../docs/video.schema.json
+version: 2
+template: office-mobility-layouts
+template_file: template.yaml
+
+metadata:
+    title: "Drei kleine Bewegungen fürs Büro"
+    language: de-DE
+    audience: "Büroarbeiterinnen und Büroarbeiter"
+    description: "Benannte Layouts: klassische Folien, eine Variante und eigene Layouts mit Variablen."
+    tags: [Büro, Bewegung, Gesundheit, Arbeitsplatz]
+    target_duration_seconds: 17
+
+assets:
+    logo: assets/gesund-am-arbeitsplatz-logo.png
+    music:
+        path: assets/ruhiger-beat.mp3
+
+content:
+    intro:
+        title: "Beweg dich kurz!"
+
+    slides:
+        # No layout: the template's default (classic) slide layout.
+        - id: schultern
+          image: assets/schulterkreisen.png
+          text: "Schultern kreisen"
+          tip: "10-mal langsam nach hinten kreisen"
+
+        # A named custom layout, filled from variables.
+        - id: statistik
+          layout: stat
+          variables:
+              NUMBER: "8"
+              UNIT: "Stunden"
+              CAPTION: "sitzen viele von uns pro Tag – Zeit für Bewegung."
+
+        # A named classic variant uses the usual slide fields.
+        - id: nacken
+          layout: slide-image-low
+          image: assets/nacken-seitlich.png
+          text: "Nacken entspannen"
+          tip: "Je Seite 10 Sekunden halten"
+
+        - id: beine
+          image: assets/beine-strecken.png
+          text: "Beine strecken"
+          tip: "Füße abwechselnd nach vorne schieben"
+
+    outro:
+        variables:
+            QUOTE: "Eine kurze Pause reicht schon. Dein Körper dankt es dir."
+            AUTHOR: "Speichern und später wiederholen"
+            ACCENT: "#1C3B44"

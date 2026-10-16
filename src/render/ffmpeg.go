@@ -28,8 +28,8 @@ func (p *Plan) Commands() ([][]string, error) {
 
 	commands := make([][]string, 0, len(streams))
 	for _, stream := range streams {
-		args := stream.Compile().Args
-		command := append([]string{args[0], "-progress", "pipe:1", "-nostats"}, args[1:]...)
+		args := inlineSources(stream.Compile().Args)
+		command := append([]string{args[0], "-nostdin", "-progress", "pipe:1", "-nostats"}, args[1:]...)
 		commands = append(commands, command)
 	}
 
@@ -57,6 +57,12 @@ func (p *Plan) RenderWithProgress(ctx context.Context, callback func(Progress)) 
 		return err
 	}
 	if err := p.writeASS(); err != nil {
+		return err
+	}
+	if err := p.writeFonts(); err != nil {
+		return err
+	}
+	if err := p.measureAudio(ctx); err != nil {
 		return err
 	}
 
@@ -139,8 +145,9 @@ func buildScene(plan *Plan, scene ScenePlan) *ffmpeg.Stream {
 		base = applyVisualLayer(base, plan, scene, layer)
 	}
 	if scene.ASS != "" {
-		base = base.Filter(ffmpegFilterASS, nil, ffmpeg.KwArgs{"filename": scene.ASSPath})
+		base = base.Filter(ffmpegFilterASS, nil, plan.assArgs(scene.ASSPath))
 	}
+	base = applyTracks(base, plan, scene.Tracks)
 
 	return base.
 		Output(scene.Output, ffmpeg.KwArgs{
@@ -168,14 +175,29 @@ func sceneBackgroundStream(plan *Plan, scene ScenePlan) *ffmpeg.Stream {
 func applyVisualLayer(base *ffmpeg.Stream, plan *Plan, scene ScenePlan, layer LayerPlan) *ffmpeg.Stream {
 	switch layer.Kind {
 	case "image", "video":
-		input := mediaLayerStream(plan, scene, layer)
-		return base.Overlay(input, mediaEOFAction(layer), ffmpeg.KwArgs{"x": layer.X, "y": layer.Y})
+		source := scene
+		if layer.ShowOnly != nil {
+			// A modified variant decodes the same file as its original; a distinct
+			// length keeps ffmpeg-go from merging the two input chains.
+			source.Duration += time.Duration(layer.ShowOnly.Start.Microseconds()%997+1) * time.Microsecond
+		}
+		input := mediaLayerStream(plan, source, layer)
+		input, x, y := animateMedia(input, frameSpace(plan.Video), layer, 0)
+		args := ffmpeg.KwArgs{"x": x, "y": y}
+		if enable := layer.enableExpr(); enable != "" {
+			args["enable"] = enable
+		}
+		return base.Overlay(input, mediaEOFAction(layer), args)
 	case "rectangle":
 		return drawRectangle(base, layer)
 	case "circle":
 		circle := circleStream(plan, layer, scene.Duration)
 		return base.Overlay(circle, eofActionEndAll, ffmpeg.KwArgs{"x": layer.X, "y": layer.Y})
 	case "text":
+		if layer.ShowOnly != nil || len(layer.HideDuring) > 0 {
+			// Modified elements show their panels only while they are visible.
+			return textClipPanel(base, ClipPlan{Duration: scene.Duration, Layer: layer}, false)
+		}
 		return drawTextBackgrounds(base, layer)
 	default:
 		return base
@@ -192,7 +214,7 @@ func mediaLayerStream(plan *Plan, scene ScenePlan, layer LayerPlan) *ffmpeg.Stre
 			Filter("format", ffmpeg.Args{"rgba"}).
 			ColorChannelMixer(ffmpeg.KwArgs{"aa": layer.Opacity})
 	}
-	if layer.Shape == "circle" || layer.Shape == "rounded-rectangle" {
+	if masked(layer) {
 		input = maskAlpha(input, shapeMask(layer))
 	}
 
@@ -341,37 +363,58 @@ func drawRectangle(base *ffmpeg.Stream, layer LayerPlan) *ffmpeg.Stream {
 func (p *Plan) buildFinal() (*ffmpeg.Stream, error) {
 	visual := ffmpeg.Input(p.Scenes[0].Output)
 
+	cut := false
 	for sceneIndex := 1; sceneIndex < len(p.Scenes); sceneIndex++ {
 		transition := boundaryFor(p.Transitions, sceneIndex-1)
 		nextScene := ffmpeg.Input(p.Scenes[sceneIndex].Output)
 
-		if transition == nil || transition.Type == "cut" {
+		if transition == nil || transition.xfade() == "" {
 			visual = ffmpeg.Concat([]*ffmpeg.Stream{visual, nextScene}, ffmpeg.KwArgs{"v": 1, "a": 0})
+			cut = true
 			continue
 		}
+		if cut {
+			// concat switches to the microsecond timebase; xfade needs both inputs to match.
+			nextScene = nextScene.Filter("settb", ffmpeg.Args{"AVTB"})
+		}
 
-		visual = ffmpeg.Filter(
-			[]*ffmpeg.Stream{visual, nextScene},
-			"xfade",
-			nil,
-			ffmpeg.KwArgs{
-				"transition": xfadeType(transition.Type),
-				"duration":   ffTime(transition.Duration),
-				"offset":     ffTime(p.xfadeOffset(sceneIndex, transition)),
-			},
-		)
+		args := ffmpeg.KwArgs{
+			"transition": transition.xfade(),
+			"duration":   ffTime(transition.Duration),
+			"offset":     ffTime(p.xfadeOffset(sceneIndex, transition)),
+		}
+		if transition.Expr != "" {
+			args["expr"] = transition.Expr
+		}
+		visual = ffmpeg.Filter([]*ffmpeg.Stream{visual, nextScene}, "xfade", nil, args)
 	}
+
+	for _, transition := range p.Transitions {
+		for _, clip := range transition.Effects {
+			visual = applyEffectClip(visual, frameSpace(p.Video), clip, false)
+		}
+	}
+	visual = applyTracks(visual, p, p.Tracks)
 
 	streams := []*ffmpeg.Stream{visual}
 	if audio := p.buildAudio(); audio != nil {
 		streams = append(streams, audio)
 	}
 
+	// Graphics-heavy frames (flat color, fine text) band and smear at x264's
+	// default quality; a low CRF and adaptive quantization keep them clean.
+	crf := p.Video.CRF
+	if crf == 0 {
+		crf = defaultCRF
+	}
 	return ffmpeg.Output(streams, p.Output, ffmpeg.KwArgs{
-		"vcodec":   "libx264",
-		"pix_fmt":  "yuv420p",
-		"movflags": "+faststart",
-		"shortest": "",
+		"vcodec":      "libx264",
+		"crf":         crf,
+		"preset":      "slow",
+		"x264-params": "aq-mode=3",
+		"pix_fmt":     "yuv420p",
+		"movflags":    "+faststart",
+		"shortest":    "",
 	}).OverWriteOutput(), nil
 }
 
@@ -382,7 +425,7 @@ func (p *Plan) xfadeOffset(sceneIndex int, transition *BoundaryTransition) time.
 		durationBeforeScene += p.Scenes[index].Duration
 
 		if index < sceneIndex-1 {
-			if previous := boundaryFor(p.Transitions, index); previous != nil && previous.Type != "cut" {
+			if previous := boundaryFor(p.Transitions, index); previous != nil && previous.xfade() != "" {
 				durationBeforeScene -= previous.Duration
 			}
 		}
@@ -391,12 +434,35 @@ func (p *Plan) xfadeOffset(sceneIndex int, transition *BoundaryTransition) time.
 	return durationBeforeScene - transition.Duration
 }
 
+// buildAudio is the final audio: the mix through the master stage or, without
+// one, a limiter that keeps overlapping tracks from clipping.
 func (p *Plan) buildAudio() *ffmpeg.Stream {
+	mix := p.mixAudioTracks()
+	switch {
+	case mix == nil:
+		return nil
+	case p.Master != nil:
+		return p.masterStage(mix)
+	default:
+		return mix.Filter("alimiter", nil, ffmpeg.KwArgs{"limit": 0.98, "attack": 5, "release": 80, "level": 0})
+	}
+}
+
+// mixAudioTracks mixes music, foreground audio, and sound effects, before the master stage.
+func (p *Plan) mixAudioTracks() *ffmpeg.Stream {
 	tracks := make([]*ffmpeg.Stream, 0)
 	foregroundTracks := make([]*ffmpeg.Stream, 0)
-	for _, scene := range p.Scenes {
+	// Video-attached clips are placed on a single scene spanning the timeline.
+	scenes := p.Scenes
+	if len(p.Audio) > 0 {
+		scenes = append(append([]ScenePlan{}, scenes...), ScenePlan{Duration: p.Duration, Audio: p.Audio})
+	}
+	sources := audioSources(scenes)
+	for _, scene := range scenes {
 		for _, layer := range scene.Audio {
-			track := audioLayerTrack(scene, layer)
+			key := audioInputKey(layer)
+			track := audioLayerTrack(scene, layer, sources[key][0])
+			sources[key] = sources[key][1:]
 			if layer.SoundEffect {
 				tracks = append(tracks, track)
 			} else {
@@ -439,17 +505,28 @@ func mixAudio(tracks []*ffmpeg.Stream, duration time.Duration) *ffmpeg.Stream {
 		return tracks[0]
 	}
 
+	// Tracks add up at their own volumes. amix's default normalization divides
+	// by the number of inputs still playing, so every sound effect that ended
+	// would turn the rest of the mix up.
 	return ffmpeg.Filter(tracks, "amix", nil, ffmpeg.KwArgs{
-		"inputs": len(tracks), "duration": "longest", "dropout_transition": 0,
+		"inputs": len(tracks), "duration": "longest", "dropout_transition": 0, "normalize": 0,
 	}).Filter("atrim", nil, ffmpeg.KwArgs{"duration": ffTime(duration)})
 }
 
-func (p *Plan) musicTrack() *ffmpeg.Stream {
-	music := ffmpeg.Input(p.Music.Path, ffmpeg.KwArgs{"stream_loop": -1}).Audio().
+// musicSource is the music looped or trimmed to the timeline.
+func (p *Plan) musicSource() *ffmpeg.Stream {
+	return ffmpeg.Input(p.Music.Path, ffmpeg.KwArgs{"stream_loop": -1}).Audio().
 		Filter("atrim", nil, ffmpeg.KwArgs{"duration": ffTime(p.Duration)}).
 		Filter("asetpts", ffmpeg.Args{"PTS-STARTPTS"})
-	if p.Music.Normalize {
-		music = music.Filter("loudnorm", nil, ffmpeg.KwArgs{"I": -16, "TP": -1.5, "LRA": 11})
+}
+
+func (p *Plan) musicTrack() *ffmpeg.Stream {
+	music := p.musicSource()
+	switch {
+	case p.Music.Normalize && p.Music.GainDB != nil:
+		music = music.Filter("volume", nil, ffmpeg.KwArgs{"volume": fmt.Sprintf("%.2fdB", *p.Music.GainDB)})
+	case p.Music.Normalize:
+		music = music.Filter("loudnorm", nil, ffmpeg.KwArgs{"I": musicLoudness, "TP": musicTruePeak, "LRA": 11})
 	}
 
 	music = music.Filter("volume", nil, ffmpeg.KwArgs{"volume": p.Music.Volume})
@@ -468,14 +545,50 @@ func (p *Plan) musicTrack() *ffmpeg.Stream {
 	return music
 }
 
-func audioLayerTrack(scene ScenePlan, layer AudioLayerPlan) *ffmpeg.Stream {
-	inputArgs := ffmpeg.KwArgs{}
-	if layer.SourceOffset > 0 {
-		inputArgs["ss"] = ffTime(layer.SourceOffset)
+func audioInputKey(layer AudioLayerPlan) string {
+	return layer.Path + "\x00" + ffTime(layer.SourceOffset)
+}
+
+// audioSources opens each distinct audio input once and splits it per use.
+// ffmpeg-go merges nodes with identical content, so repeating a sound (the
+// same effect in several scenes) would otherwise give one input node several
+// unsplit outputs, which FFmpeg's filter graph cannot express.
+func audioSources(scenes []ScenePlan) map[string][]*ffmpeg.Stream {
+	counts := map[string]int{}
+	var order []AudioLayerPlan
+	for _, scene := range scenes {
+		for _, layer := range scene.Audio {
+			key := audioInputKey(layer)
+			if counts[key] == 0 {
+				order = append(order, layer)
+			}
+			counts[key]++
+		}
 	}
 
+	sources := map[string][]*ffmpeg.Stream{}
+	for _, layer := range order {
+		key := audioInputKey(layer)
+		inputArgs := ffmpeg.KwArgs{}
+		if layer.SourceOffset > 0 {
+			inputArgs["ss"] = ffTime(layer.SourceOffset)
+		}
+		input := ffmpeg.Input(layer.Path, inputArgs).Audio()
+		if counts[key] == 1 {
+			sources[key] = []*ffmpeg.Stream{input}
+			continue
+		}
+		split := input.ASplit()
+		for i := range counts[key] {
+			sources[key] = append(sources[key], split.Get(strconv.Itoa(i)))
+		}
+	}
+	return sources
+}
+
+func audioLayerTrack(scene ScenePlan, layer AudioLayerPlan, source *ffmpeg.Stream) *ffmpeg.Stream {
 	duration := mediaDuration(layer.Duration, scene.Duration-layer.Offset)
-	input := ffmpeg.Input(layer.Path, inputArgs).Audio().
+	input := source.
 		Filter("atrim", nil, ffmpeg.KwArgs{"duration": ffTime(duration)}).
 		Filter("asetpts", ffmpeg.Args{"PTS-STARTPTS"})
 
@@ -487,6 +600,10 @@ func audioLayerTrack(scene ScenePlan, layer AudioLayerPlan) *ffmpeg.Stream {
 		input = input.Filter("afade", nil, ffmpeg.KwArgs{
 			"t": "out", "st": ffTime(duration - layer.FadeOut), "d": ffTime(layer.FadeOut),
 		})
+	}
+
+	if layer.VolumeAnimation != nil {
+		input = input.Filter("volume", nil, ffmpeg.KwArgs{"volume": layer.VolumeAnimation.Expr("volume", "t", 1), "eval": "frame"})
 	}
 
 	return input.Filter("adelay", nil, ffmpeg.KwArgs{"delays": (scene.Start + layer.Offset).Milliseconds(), "all": 1}).
@@ -535,6 +652,11 @@ func (p *Plan) usesASS() bool {
 			return true
 		}
 	}
+	for _, track := range p.allTracks() {
+		if len(textRuns(track.Clips)) > 0 {
+			return true
+		}
+	}
 
 	return false
 }
@@ -548,8 +670,109 @@ func (p *Plan) writeASS() error {
 			return fmt.Errorf("write ASS file for scene %q: %w", scene.ID, err)
 		}
 	}
+	for _, track := range p.allTracks() {
+		// A folder's text is drawn on its canvas, in the canvas's coordinates.
+		video, s := p.Video, frameSpace(p.Video)
+		if track.Canvas != nil {
+			s = space{*track.Canvas, p.Video.FPS}
+			video.Width, video.Height = track.Canvas.W, track.Canvas.H
+		}
+		for run, clips := range textRuns(track.Clips) {
+			local := make([]ClipPlan, len(clips))
+			for i, clip := range clips {
+				clip.Layer = s.local(clip.Layer)
+				local[i] = clip
+			}
+			doc := textRunDocument(video, local)
+			if err := os.WriteFile(filepath.Join(p.WorkDir, "ass", runASSName(track, run)), []byte(doc), 0o644); err != nil {
+				return fmt.Errorf("write ASS file for track %q: %w", track.ID, err)
+			}
+		}
+	}
 
 	return nil
+}
+
+// bundledFonts lists the font files libass must load from the render's fonts
+// directory: fonts the text uses that aren't installed.
+func (p *Plan) bundledFonts() []string {
+	seen := map[string]bool{}
+	var files []string
+	add := func(l LayerPlan) {
+		if l.face != nil && l.face.Bundled && !seen[l.face.Path] {
+			seen[l.face.Path] = true
+			files = append(files, l.face.Path)
+		}
+	}
+	for _, scene := range p.Scenes {
+		for _, l := range scene.Layers {
+			add(l)
+		}
+	}
+	for _, track := range p.allTracks() {
+		for _, clip := range track.Clips {
+			add(clip.Layer)
+		}
+	}
+	return files
+}
+
+// assArgs are the arguments of an ass filter drawing filename.
+func (p *Plan) assArgs(filename string) ffmpeg.KwArgs {
+	args := ffmpeg.KwArgs{"filename": filename}
+	if len(p.bundledFonts()) > 0 {
+		args["fontsdir"] = filepath.Join(p.WorkDir, "fonts")
+	}
+	return args
+}
+
+// writeFonts copies the bundled fonts into the render's fonts directory.
+func (p *Plan) writeFonts() error {
+	// Fonts from earlier renders could shadow this one's by name.
+	dir := filepath.Join(p.WorkDir, "fonts")
+	if err := os.RemoveAll(dir); err != nil {
+		return err
+	}
+	files := p.bundledFonts()
+	if len(files) == 0 {
+		return nil
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	for i, file := range files {
+		data, err := os.ReadFile(file)
+		if err != nil {
+			return fmt.Errorf("font %s: %w", file, err)
+		}
+		// Numbered, so fonts from different folders can't collide.
+		name := fmt.Sprintf("%02d-%s", i, filepath.Base(file))
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// allTracks lists every track of the plan, including the children of folders.
+func (p *Plan) allTracks() []TrackPlan {
+	var tracks []TrackPlan
+	var add func([]TrackPlan)
+	add = func(list []TrackPlan) {
+		for _, track := range list {
+			tracks = append(tracks, track)
+			for _, clip := range track.Clips {
+				if clip.Folder != nil {
+					add([]TrackPlan{*clip.Folder})
+				}
+			}
+		}
+	}
+	add(p.Tracks)
+	for _, scene := range p.Scenes {
+		add(scene.Tracks)
+	}
+	return tracks
 }
 
 func requireFilter(ctx context.Context, name string) error {

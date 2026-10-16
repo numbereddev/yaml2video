@@ -17,6 +17,10 @@ Features
 * Visual and audio effects, including sliding animations, smooth transitions, and background music
 * MP4 output ready to use and share
 
+Showcase
+
+<video src="media/showcase.mp4" controls width="720"></video>
+
 ## Prerequisites
 
 * Docker / Docker Compose
@@ -32,7 +36,7 @@ Clone this repository and open a terminal in its folder. You need Docker with Co
 $ git clone https://github.com/ondics/yaml2video
 $ cd yaml2video
 $ make build up
-$ make render FILE=examples/simple/video-simple.yaml
+$ make render FILE=examples/simple/video.yaml
 /renders/TVMSVSQRYZTI7EQPGDUVHBHKQK/download
 ```
 
@@ -44,7 +48,7 @@ http://<your ip-address>:8080/renders/TVMSVSQRYZTI7EQPGDUVHBHKQK/download
 
 ## Using CLI for video generation
 
-`make cli` runs yaml2video in the container with your current folder. The example's video YAML includes `template_file: template-simple.yaml`, resolved beside the video YAML, so `-t` is optional. The result is `examples/simple/output.mp4` on your computer.
+`make cli` runs yaml2video in the container with your current folder. The example's video YAML includes `template_file: template.yaml`, resolved beside the video YAML, so `-t` is optional. The result is `examples/simple/output.mp4` on your computer.
 
 For your own files, pass CLI arguments through `ARGS`:
 
@@ -83,7 +87,7 @@ Build the image before starting the server. Rendered files are stored inside the
 To render that example through the API, run:
 
 ```sh
-make render FILE=examples/simple/video-simple.yaml
+make render FILE=examples/simple/video.yaml
 ```
 
 `make render` starts the server if needed and prints the download URL when rendering completes. `FILE` is relative to the mount.  
@@ -130,6 +134,8 @@ On Windows, use `yaml2video.exe` instead. Without `-o`, the output is `output.mp
 - [Server API](docs/server-api.md)
 - YAML schemas: [video](docs/video.schema.json) · [template](docs/template.schema.json)
 - [YAML format and rendering reference](docs/reference.md)
+- [Layouts: named, classic, and custom](docs/layouts.md)
+- [Advanced mode: tracks, keyframes, and effect layers](docs/advanced.md)
 - [Contributing and development setup](CONTRIBUTING.md)
 
 ## License

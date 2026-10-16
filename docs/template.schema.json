@@ -25,9 +25,455 @@
 		"format": { "$ref": "#/$defs/format" },
 		"defaults": { "$ref": "#/$defs/defaults" },
 		"composition": { "$ref": "#/$defs/composition" },
-		"layout": { "$ref": "#/$defs/layout" }
+		"layout": { "$ref": "#/$defs/layout" },
+		"advanced": { "$ref": "#/$defs/advanced" }
 	},
 	"$defs": {
+		"advanced": {
+			"description": "Optional advanced mode: element keyframes, reusable keyframe and effect presets, and tracks of timed clips and effect layers. Templates without it render exactly as before.",
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"animate": { "$ref": "#/$defs/animate" },
+				"keyframes": { "$ref": "#/$defs/keyframe_presets" },
+				"effects": { "$ref": "#/$defs/effect_presets" },
+				"tracks": { "type": "array", "items": { "$ref": "#/$defs/track" } },
+				"transitions": { "$ref": "#/$defs/transition_definitions" },
+				"master": { "$ref": "#/$defs/master" }
+			}
+		},
+		"master": {
+			"description": "Normalizes the final audio mix to a loudness target.",
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"loudness": { "type": "number", "minimum": -70, "maximum": -5, "default": -14, "description": "Integrated loudness in LUFS." },
+				"true_peak": { "type": "number", "minimum": -9, "maximum": 0, "default": -1, "description": "True-peak ceiling in dBTP." }
+			}
+		},
+		"animate": {
+			"description": "Keyframes for standard layout elements, relative to each scene's start.",
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"intro": {
+					"type": "object",
+					"additionalProperties": false,
+					"properties": {
+						"logo": { "$ref": "#/$defs/element_animation" },
+						"title": { "$ref": "#/$defs/element_animation" },
+						"subtitle": { "$ref": "#/$defs/element_animation" }
+					}
+				},
+				"slide": {
+					"type": "object",
+					"additionalProperties": false,
+					"properties": {
+						"logo": { "$ref": "#/$defs/element_animation" },
+						"image": { "$ref": "#/$defs/element_animation" },
+						"label": { "$ref": "#/$defs/element_animation" },
+						"text": { "$ref": "#/$defs/element_animation" },
+						"tip": { "$ref": "#/$defs/element_animation" },
+						"index": { "$ref": "#/$defs/element_animation" }
+					}
+				},
+				"outro": {
+					"type": "object",
+					"additionalProperties": false,
+					"properties": {
+						"logo": { "$ref": "#/$defs/element_animation" },
+						"title": { "$ref": "#/$defs/element_animation" },
+						"text": { "$ref": "#/$defs/element_animation" },
+						"cta": { "$ref": "#/$defs/element_animation" }
+					}
+				}
+			}
+		},
+		"element_animation": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["keyframes"],
+			"properties": { "keyframes": { "$ref": "#/$defs/keyframes_ref" } }
+		},
+		"keyframe_presets": {
+			"description": "Named keyframe lists, referenced by name from animate, clips, or the video.",
+			"type": "object",
+			"additionalProperties": { "$ref": "#/$defs/keyframes_ref" }
+		},
+		"effect_presets": {
+			"description": "Named effect-layer stacks, referenced by name from effect clips or the video.",
+			"type": "object",
+			"additionalProperties": { "$ref": "#/$defs/effects_ref" }
+		},
+		"keyframes_ref": {
+			"oneOf": [
+				{ "type": "string", "minLength": 1 },
+				{ "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/keyframe_item" } }
+			]
+		},
+		"keyframe_item": { "oneOf": [{ "$ref": "#/$defs/keyframe" }, { "$ref": "#/$defs/preset_use" }] },
+		"preset_use": {
+			"description": "Splices a named preset into a list.",
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["use"],
+			"properties": { "use": { "type": "string", "minLength": 1 } }
+		},
+		"keyframe": {
+			"description": "Values at one moment. A property animates between the keyframes that set it; ease shapes the segment that starts here.",
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["at"],
+			"properties": {
+				"at": { "$ref": "#/$defs/time_point" },
+				"ease": {
+					"type": "string",
+					"enum": ["linear", "step", "ease-in", "ease-out", "ease-in-out", "back-in", "back-out", "elastic-out", "bounce-out"]
+				},
+				"x": { "type": "number", "description": "Horizontal offset in pixels from the rest position." },
+				"y": { "type": "number", "description": "Vertical offset in pixels from the rest position." },
+				"scale": { "type": "number", "minimum": 0 },
+				"scale_x": { "type": "number", "minimum": 0 },
+				"scale_y": { "type": "number", "minimum": 0 },
+				"width": { "type": "number", "minimum": 0, "description": "Width in pixels around the center (rect, circle, and image clips); corner radii keep their size." },
+				"height": { "type": "number", "minimum": 0, "description": "Height in pixels around the center (rect, circle, and image clips); corner radii keep their size." },
+				"rotation": { "type": "number", "description": "Degrees clockwise around the element center." },
+				"opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+				"volume": { "type": "number", "minimum": 0, "maximum": 1 },
+				"chars_start": { "$ref": "#/$defs/reveal_amount", "description": "Text only: this many characters at the start are hidden (keeping their space)." },
+				"chars_end": { "$ref": "#/$defs/reveal_amount", "description": "Text only: only characters before this count show; animate it from 0 to \"100%\" to type the text." },
+				"lines_start": { "$ref": "#/$defs/reveal_amount", "description": "Text only: this many lines at the start are hidden." },
+				"lines_end": { "$ref": "#/$defs/reveal_amount", "description": "Text only: only lines before this count show." }
+			}
+		},
+		"time_point": {
+			"description": "Seconds from the owner's start, or a negative string counted back from its end (\"-0.4s\").",
+			"oneOf": [
+				{ "type": "number", "minimum": 0 },
+				{ "type": "string", "pattern": "^-?[0-9]+(?:\\.[0-9]+)?s$" }
+			]
+		},
+		"track": {
+			"description": "A stack layer. Tracks render in order above the content they attach to; template tracks render below video tracks.",
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["id", "clips"],
+			"properties": {
+				"id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$" },
+				"description": { "type": "string" },
+				"attach": {
+					"type": "string",
+					"minLength": 1,
+					"description": "video (default), intro, slide, outro, a layout name, or a scene id. Role and layout attachments repeat for every matching scene; clip times are relative to it."
+				},
+				"visible": { "type": "boolean", "default": true },
+				"offset": {
+					"$ref": "#/$defs/time_point",
+					"description": "Delays the whole track from its owner's start (negative counts back from the end). Clip times are relative to the offset."
+				},
+				"clips": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/clip" } }
+			}
+		},
+		"clip": {
+			"description": "A track clip: any layout element, or an element clip that animates or modifies a layout element.",
+			"type": "object",
+			"required": ["type"],
+			"properties": { "type": { "type": "string", "enum": ["image", "rect", "circle", "text", "progress", "audio", "effect", "folder", "element"] } },
+			"allOf": [
+				{ "if": { "properties": { "type": { "const": "element" } } }, "then": { "$ref": "#/$defs/element_clip" }, "else": { "$ref": "#/$defs/element" } }
+			]
+		},
+		"element": {
+			"description": "A custom layout element. Elements render in list order, so later ones stack on top.",
+			"type": "object",
+			"required": ["type"],
+			"properties": { "type": { "type": "string", "enum": ["image", "rect", "circle", "text", "progress", "audio", "effect", "folder"] } },
+			"allOf": [
+				{ "if": { "properties": { "type": { "const": "image" } } }, "then": { "$ref": "#/$defs/image_clip" } },
+				{ "if": { "properties": { "type": { "enum": ["rect", "circle"] } } }, "then": { "$ref": "#/$defs/shape_clip" } },
+				{ "if": { "properties": { "type": { "const": "text" } } }, "then": { "$ref": "#/$defs/text_clip" } },
+				{ "if": { "properties": { "type": { "const": "progress" } } }, "then": { "$ref": "#/$defs/progress_clip" } },
+				{ "if": { "properties": { "type": { "const": "audio" } } }, "then": { "$ref": "#/$defs/audio_clip" } },
+				{ "if": { "properties": { "type": { "const": "effect" } } }, "then": { "$ref": "#/$defs/effect_clip" } },
+				{ "if": { "properties": { "type": { "const": "folder" } } }, "then": { "$ref": "#/$defs/folder_clip" } }
+			]
+		},
+		"folder_clip": {
+			"description": "A group of clips, nested freely. Children are timed from the folder's start and keep their own keyframes; the folder's keyframes, opacity, and effects transform the whole group.",
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["type", "clips"],
+			"properties": {
+				"type": { "const": "folder" },
+				"id": { "$ref": "#/$defs/element_id" },
+				"optional": { "$ref": "#/$defs/optional" },
+				"start": { "$ref": "#/$defs/time_point" },
+				"duration": { "$ref": "#/$defs/duration" },
+				"keyframes": { "$ref": "#/$defs/keyframes_ref", "description": "Moves, scales, rotates, and fades the group; scale and rotation turn around the pivot." },
+				"pivot": { "$ref": "#/$defs/placement", "description": "The point scale and rotation turn around, placed like an element of zero size. Default: the center of the children." },
+				"opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+				"effects": { "$ref": "#/$defs/effects_ref", "description": "Effect layers over the group's composited children, e.g. shake or glow." },
+				"clips": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/element" } }
+			}
+		},
+		"element_id": {
+			"description": "Names the element so advanced element clips can target it.",
+			"type": "string",
+			"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+		},
+		"optional": {
+			"description": "Skip the element when one of its $(VARIABLES) has no value, instead of failing.",
+			"type": "boolean",
+			"default": false
+		},
+		"bindable_color": {
+			"description": "#RRGGBB, or text containing $(VARIABLE) that resolves to #RRGGBB.",
+			"type": "string",
+			"pattern": "^(?:#[0-9A-Fa-f]{6}|.*\\$[({].*)$"
+		},
+		"progress_clip": {
+			"description": "The slide's position in its section as a filled bar.",
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["type", "placement"],
+			"properties": {
+				"type": { "const": "progress" },
+				"id": { "$ref": "#/$defs/element_id" },
+				"optional": { "$ref": "#/$defs/optional" },
+				"start": { "$ref": "#/$defs/time_point" },
+				"duration": { "$ref": "#/$defs/duration" },
+				"placement": { "$ref": "#/$defs/placement" },
+				"color": { "$ref": "#/$defs/color" },
+				"background_color": { "$ref": "#/$defs/color" },
+				"width_ratio": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+				"thickness": { "type": "number", "exclusiveMinimum": 0 }
+			}
+		},
+		"element_clip": {
+			"description": "Animates or modifies a layout element of the attached scene: a custom element by id, or a classic element by name (title, image, text, tip, ...).",
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["type", "target"],
+			"properties": {
+				"type": { "const": "element" },
+				"target": { "$ref": "#/$defs/element_id" },
+				"start": { "$ref": "#/$defs/time_point" },
+				"duration": { "$ref": "#/$defs/duration" },
+				"keyframes": {
+					"$ref": "#/$defs/keyframes_ref",
+					"description": "Animates the element, relative to this clip's start; it overrides the element's own keyframes for the properties it sets."
+				},
+				"set": {
+					"description": "Element properties to change while the clip runs (text, path, color, style, effects, placement, visible, ...). The element shows its modified form during the clip and its original form outside it.",
+					"type": "object"
+				}
+			}
+		},
+		"custom_layout": {
+			"description": "A fully custom layout: an ordered list of elements, or an object with a background, elements, and the defaults of every scene that uses it.",
+			"oneOf": [
+				{ "type": "array", "items": { "$ref": "#/$defs/element" } },
+				{
+					"type": "object",
+					"additionalProperties": false,
+					"required": ["elements"],
+					"properties": {
+						"background": { "$ref": "#/$defs/color" },
+						"elements": { "type": "array", "items": { "$ref": "#/$defs/element" } },
+						"duration": { "$ref": "#/$defs/duration", "description": "Scene length unless the content item sets one." },
+						"transition_out": { "$ref": "#/$defs/transition", "description": "Transition out of scenes using this layout, unless the content item sets one." },
+						"transition_in": { "$ref": "#/$defs/transition", "description": "Transition into scenes using this layout, unless the content item sets one." },
+						"tracks": {
+							"description": "Tracks repeated in every scene using this layout, below the template's advanced tracks. They attach to the layout; attach is not allowed.",
+							"type": "array",
+							"items": { "$ref": "#/$defs/track" }
+						}
+					}
+				}
+			]
+		},
+		"layout_name": {
+			"description": "Uses another layout by name.",
+			"type": "string",
+			"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+		},
+		"text_cover": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["text"],
+			"description": "Sizes and places the clip on the characters a text clip shows (its own match, if any), measured with the text's font: a highlight. Replaces width, height, and placement.",
+			"properties": {
+				"text": { "$ref": "#/$defs/element_id", "description": "The id of a text clip in the same layout, track, or folder (or a folder inside it)." },
+				"match": { "type": "string", "minLength": 1, "description": "Covers only what this regular expression matches (its first group, if any); $(VARIABLE) bindings are allowed." },
+				"padding_x": { "type": "number" },
+				"padding_y": { "type": "number" }
+			}
+		},
+		"text_caret": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["text"],
+			"description": "Moves the clip along a text clip as it types: its left edge after the last revealed character (chars_end), centered on that line, every frame. Replaces placement; width and height default to a character cell (the font's 0, one line tall).",
+			"properties": {
+				"text": { "$ref": "#/$defs/element_id", "description": "The id of a text clip in the same layout, track, or folder (or a folder inside it)." },
+				"offset_x": { "type": "number" },
+				"offset_y": { "type": "number" }
+			}
+		},
+		"image_clip": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["type", "path"],
+			"anyOf": [{ "required": ["placement"] }, { "required": ["cover"] }, { "required": ["caret"] }],
+			"properties": {
+				"type": { "const": "image" },
+				"cover": { "$ref": "#/$defs/text_cover" },
+				"caret": { "$ref": "#/$defs/text_caret" },
+				"id": { "$ref": "#/$defs/element_id" },
+				"optional": { "$ref": "#/$defs/optional" },
+				"start": { "$ref": "#/$defs/time_point" },
+				"duration": { "$ref": "#/$defs/duration" },
+				"keyframes": { "$ref": "#/$defs/keyframes_ref" },
+				"path": { "type": "string", "minLength": 1, "description": "Image path, relative to the video YAML. $(VARIABLE) bindings are allowed, e.g. $(image) or $(logo)." },
+				"placement": { "$ref": "#/$defs/placement" },
+				"fit": { "type": "string", "enum": ["cover", "contain"] },
+				"shape": { "type": "string", "enum": ["rectangle", "rounded-rectangle", "circle"] },
+				"effects": { "$ref": "#/$defs/effects" },
+				"max_width_ratio": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+				"max_height_ratio": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+				"opacity": { "type": "number", "minimum": 0, "maximum": 1 }
+			}
+		},
+		"shape_clip": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["type", "color"],
+			"anyOf": [{ "required": ["width", "height", "placement"] }, { "required": ["cover"] }, { "required": ["caret"] }],
+			"properties": {
+				"type": { "type": "string", "enum": ["rect", "circle"] },
+				"cover": { "$ref": "#/$defs/text_cover" },
+				"caret": { "$ref": "#/$defs/text_caret" },
+				"id": { "$ref": "#/$defs/element_id" },
+				"optional": { "$ref": "#/$defs/optional" },
+				"start": { "$ref": "#/$defs/time_point" },
+				"duration": { "$ref": "#/$defs/duration" },
+				"keyframes": { "$ref": "#/$defs/keyframes_ref" },
+				"placement": { "$ref": "#/$defs/placement" },
+				"width": { "type": "integer", "minimum": 1 },
+				"height": { "type": "integer", "minimum": 1 },
+				"color": { "$ref": "#/$defs/bindable_color" },
+				"corner_radius": { "type": "integer", "minimum": 0 },
+				"opacity": { "type": "number", "minimum": 0, "maximum": 1 }
+			}
+		},
+		"text_clip": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["type", "text", "placement"],
+			"properties": {
+				"type": { "const": "text" },
+				"id": { "$ref": "#/$defs/element_id" },
+				"optional": { "$ref": "#/$defs/optional" },
+				"start": { "$ref": "#/$defs/time_point" },
+				"duration": { "$ref": "#/$defs/duration" },
+				"keyframes": { "$ref": "#/$defs/keyframes_ref" },
+				"text": { "type": "string", "minLength": 1, "description": "Text with $(VARIABLE) bindings: the content item's variables and fields, $(index)/$(total) for slides, $(metadata.title), and $(NAME|fallback)." },
+				"placement": { "$ref": "#/$defs/placement" },
+				"style": { "$ref": "#/$defs/text_style" },
+				"effects": { "$ref": "#/$defs/effects" },
+				"max_lines": { "type": "integer", "minimum": 1 },
+				"max_width_ratio": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+				"reveal": { "$ref": "#/$defs/reveal" },
+				"match": { "type": "string", "minLength": 1, "description": "A regular expression (RE2, $(VARIABLES) allowed): only the characters its matches cover show, or its first group's when it has groups. The others keep their space, so texts layered with different matches color one text." },
+				"replace": {
+					"description": "Rewrites the text before layout: every match of pattern (RE2, $(VARIABLES) allowed) becomes with ($1 refers to a group).",
+					"type": "object",
+					"additionalProperties": false,
+					"required": ["pattern", "with"],
+					"properties": { "pattern": { "type": "string", "minLength": 1 }, "with": { "type": "string" } }
+				}
+			}
+		},
+		"reveal": {
+			"description": "The visible part of a text: the characters from chars_start up to chars_end, on the lines from lines_start up to lines_end. Hidden characters and lines keep their space, so nothing moves. Keyframes animate the same properties.",
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"chars_start": { "$ref": "#/$defs/reveal_amount", "default": 0 },
+				"chars_end": { "$ref": "#/$defs/reveal_amount", "default": "100%" },
+				"lines_start": { "$ref": "#/$defs/reveal_amount", "default": 0 },
+				"lines_end": { "$ref": "#/$defs/reveal_amount", "default": "100%" }
+			}
+		},
+		"reveal_amount": {
+			"description": "A count of characters or lines (line breaks are not characters; lines count after wrapping), or a percentage of the total such as \"50%\". Counts between whole numbers round down; counts above the total mean all.",
+			"oneOf": [
+				{ "type": "number", "minimum": 0 },
+				{ "type": "string", "pattern": "^[0-9]+(?:\\.[0-9]+)?%$" }
+			]
+		},
+		"audio_clip": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["type", "path"],
+			"properties": {
+				"type": { "const": "audio" },
+				"id": { "$ref": "#/$defs/element_id" },
+				"optional": { "$ref": "#/$defs/optional" },
+				"start": { "$ref": "#/$defs/time_point" },
+				"duration": { "$ref": "#/$defs/duration" },
+				"keyframes": { "$ref": "#/$defs/keyframes_ref" },
+				"path": { "type": "string", "minLength": 1 },
+				"volume": { "type": "number", "minimum": 0, "maximum": 1 },
+				"fade_in": { "$ref": "#/$defs/duration" },
+				"fade_out": { "$ref": "#/$defs/duration" },
+				"ducks": { "type": "boolean", "default": false, "description": "true treats the clip as foreground audio that ducks the music." }
+			}
+		},
+		"effect_clip": {
+			"description": "An adjustment layer: its effects stack, in order, over everything below it during the clip. Keyframes animate opacity (mix) and x/y/scale/rotation (camera).",
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["type"],
+			"properties": {
+				"type": { "const": "effect" },
+				"id": { "$ref": "#/$defs/element_id" },
+				"optional": { "$ref": "#/$defs/optional" },
+				"start": { "$ref": "#/$defs/time_point" },
+				"duration": { "$ref": "#/$defs/duration" },
+				"keyframes": { "$ref": "#/$defs/keyframes_ref" },
+				"effects": { "$ref": "#/$defs/effects_ref" },
+				"opacity": { "type": "number", "minimum": 0, "maximum": 1 }
+			}
+		},
+		"effects_ref": {
+			"oneOf": [
+				{ "type": "string", "minLength": 1 },
+				{ "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/adjustment_item" } }
+			]
+		},
+		"adjustment_item": { "oneOf": [{ "$ref": "#/$defs/adjustment" }, { "$ref": "#/$defs/preset_use" }] },
+		"adjustment": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["type"],
+			"properties": {
+				"type": { "type": "string", "enum": ["blur", "color", "color_filter", "vignette", "glow", "rgb_split", "grain", "tint", "shake"] },
+				"radius": { "type": "number", "minimum": 0 },
+				"strength": { "type": "number", "minimum": 0, "maximum": 1 },
+				"amount": { "type": "number", "minimum": 0 },
+				"brightness": { "type": "number", "minimum": -1, "maximum": 1 },
+				"contrast": { "type": "number", "minimum": 0, "maximum": 4 },
+				"saturation": { "type": "number", "minimum": 0, "maximum": 3 },
+				"gamma": { "type": "number", "exclusiveMinimum": 0, "maximum": 10 },
+				"hue": { "type": "number" },
+				"frequency": { "type": "number", "exclusiveMinimum": 0 },
+				"color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+				"opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+				"preset": { "type": "string", "enum": ["grayscale", "sepia", "warm", "cool", "high-contrast"] },
+				"intensity": { "type": "number", "minimum": 0, "maximum": 1 }
+			}
+		},
 		"format": {
 			"type": "object",
 			"additionalProperties": false,
@@ -39,7 +485,8 @@
 				},
 				"width": { "type": "integer", "minimum": 1 },
 				"height": { "type": "integer", "minimum": 1 },
-				"fps": { "type": "integer", "minimum": 1, "maximum": 240 }
+				"fps": { "type": "integer", "minimum": 1, "maximum": 240 },
+				"crf": { "type": "integer", "minimum": 0, "maximum": 51, "default": 16, "description": "Quality of the final H.264 encode: lower is better and larger." }
 			}
 		},
 		"defaults": {
@@ -77,7 +524,16 @@
 			"type": "object",
 			"additionalProperties": false,
 			"properties": {
-				"font_family": { "type": "string", "minLength": 1 },
+				"font_family": {
+					"type": "string",
+					"minLength": 1,
+					"description": "A font family: from the project's fonts, installed, or any Google Fonts family (downloaded and cached on first use)."
+				},
+				"fonts": {
+					"type": "array",
+					"items": { "type": "string", "minLength": 1 },
+					"description": "Font files or directories to use before installed fonts, relative to the video YAML. A fonts/ directory next to the video is always used."
+				},
 				"title_size": { "type": "integer", "minimum": 1 },
 				"body_size": { "type": "integer", "minimum": 1 },
 				"tip_size": { "type": "integer", "minimum": 1 }
@@ -86,44 +542,93 @@
 		"timing": {
 			"type": "object",
 			"additionalProperties": false,
-			"required": ["intro_duration", "slide_duration", "outro_duration", "transition"],
+			"required": ["intro_duration", "slide_duration", "outro_duration"],
 			"properties": {
 				"intro_duration": { "$ref": "#/$defs/duration" },
 				"slide_duration": { "$ref": "#/$defs/duration" },
 				"outro_duration": { "$ref": "#/$defs/duration" },
-				"transition": { "$ref": "#/$defs/transition" }
+				"transition": {
+					"$ref": "#/$defs/transition",
+					"description": "Fallback out transition for sections without transition_out. Without it, scenes cut."
+				}
 			}
 		},
 		"transition": {
 			"type": "object",
 			"additionalProperties": false,
-			"required": ["type", "duration"],
+			"required": ["type"],
 			"properties": {
 				"type": {
-					"type": "string",
-					"enum": [
-						"cut",
-						"fade",
-						"dissolve",
-						"wipe-left",
-						"wipe-right",
-						"wipe-up",
-						"wipe-down",
-						"slide-left",
-						"slide-right",
-						"slide-up",
-						"slide-down",
-						"circle-open",
-						"circle-close",
-						"radial",
-						"pixelize",
-						"zoom-in",
-						"cover",
-						"reveal",
-						"blur"
+					"description": "A built-in transition, or the name of a custom transition from advanced.transitions.",
+					"anyOf": [
+						{ "$ref": "#/$defs/builtin_transition" },
+						{ "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$" }
 					]
 				},
-				"duration": { "$ref": "#/$defs/duration" }
+				"duration": {
+					"$ref": "#/$defs/duration",
+					"description": "Required for built-in blends; overrides a custom transition's duration."
+				}
+			}
+		},
+		"transitions": {
+			"description": "One transition, or a list that rotates across the section's scenes.",
+			"oneOf": [
+				{ "$ref": "#/$defs/transition" },
+				{ "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/transition" } }
+			]
+		},
+		"builtin_transition": {
+			"type": "string",
+			"enum": [
+				"cut", "fade", "dissolve",
+				"wipe-left", "wipe-right", "wipe-up", "wipe-down",
+				"slide-left", "slide-right", "slide-up", "slide-down",
+				"circle-open", "circle-close", "radial", "pixelize", "zoom-in", "cover", "reveal", "blur",
+				"fade-black", "fade-white", "fade-grays", "fade-fast", "fade-slow", "distance",
+				"smooth-left", "smooth-right", "smooth-up", "smooth-down",
+				"circle-crop", "rect-crop", "horz-open", "horz-close", "vert-open", "vert-close",
+				"diag-tl", "diag-tr", "diag-bl", "diag-br", "wipe-tl", "wipe-tr", "wipe-bl", "wipe-br",
+				"slice-left", "slice-right", "slice-up", "slice-down", "squeeze-h", "squeeze-v",
+				"wind-left", "wind-right", "wind-up", "wind-down",
+				"cover-left", "cover-right", "cover-up", "cover-down",
+				"reveal-left", "reveal-right", "reveal-up", "reveal-down"
+			]
+		},
+		"transition_definitions": {
+			"description": "Named custom transitions, usable by name wherever a transition type is accepted.",
+			"type": "object",
+			"additionalProperties": { "$ref": "#/$defs/transition_definition" }
+		},
+		"transition_definition": {
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"base": {
+					"$ref": "#/$defs/builtin_transition",
+					"description": "Built-in blend between the scenes. Omitted (with no expr): a hard cut."
+				},
+				"expr": {
+					"type": "string",
+					"minLength": 1,
+					"description": "Custom blend as an FFmpeg expression per pixel: A and B are the outgoing and incoming pixels, X, Y, W, H the position and size, P the progress from 0 to 1."
+				},
+				"duration": { "$ref": "#/$defs/duration", "description": "Default length of the blend and of each side." },
+				"effects": { "$ref": "#/$defs/effects_ref", "description": "Effect layers across the whole transition, centered on the boundary." },
+				"keyframes": { "$ref": "#/$defs/keyframes_ref" },
+				"opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+				"out": { "$ref": "#/$defs/transition_side", "description": "Effects on the end of the outgoing scene only." },
+				"in": { "$ref": "#/$defs/transition_side", "description": "Effects on the start of the incoming scene only." }
+			}
+		},
+		"transition_side": {
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"duration": { "$ref": "#/$defs/duration" },
+				"effects": { "$ref": "#/$defs/effects_ref" },
+				"keyframes": { "$ref": "#/$defs/keyframes_ref" },
+				"opacity": { "type": "number", "minimum": 0, "maximum": 1 }
 			}
 		},
 		"audio": {
@@ -176,7 +681,15 @@
 				"repeat": { "type": "boolean", "default": false },
 				"duration_from": { "type": "string", "enum": ["item.duration"] },
 				"default_duration": { "$ref": "#/$defs/duration" },
-				"transition_out": { "$ref": "#/$defs/transition" }
+				"transition_out": { "$ref": "#/$defs/transitions" },
+				"transition_in": {
+					"$ref": "#/$defs/transitions",
+					"description": "Transition into each scene of this section. It overrides the in side of the previous scene's out transition; a transition given on only one side covers both."
+				},
+				"layout": {
+					"$ref": "#/$defs/layout_name",
+					"description": "Default layout for this section's scenes, instead of the role's layout. A content item's own layout wins."
+				}
 			},
 			"allOf": [
 				{
@@ -200,13 +713,17 @@
 			]
 		},
 		"layout": {
+			"description": "Layouts by name. intro, slide, and outro are each role's default; every other key is a named layout that sections and content items select with layout:. Each layout is classic (the role's fixed elements), custom (an element list), or the name of another layout.",
 			"type": "object",
-			"additionalProperties": false,
 			"required": ["intro", "slide", "outro"],
 			"properties": {
-				"intro": { "$ref": "#/$defs/intro_layout" },
-				"slide": { "$ref": "#/$defs/slide_layout" },
-				"outro": { "$ref": "#/$defs/outro_layout" }
+				"intro": { "oneOf": [{ "$ref": "#/$defs/intro_layout" }, { "$ref": "#/$defs/custom_layout" }, { "$ref": "#/$defs/layout_name" }] },
+				"slide": { "oneOf": [{ "$ref": "#/$defs/slide_layout" }, { "$ref": "#/$defs/custom_layout" }, { "$ref": "#/$defs/layout_name" }] },
+				"outro": { "oneOf": [{ "$ref": "#/$defs/outro_layout" }, { "$ref": "#/$defs/custom_layout" }, { "$ref": "#/$defs/layout_name" }] }
+			},
+			"additionalProperties": {
+				"description": "A named layout: a classic slide layout, a custom layout, or the name of another layout.",
+				"oneOf": [{ "$ref": "#/$defs/slide_layout" }, { "$ref": "#/$defs/custom_layout" }, { "$ref": "#/$defs/layout_name" }]
 			}
 		},
 		"intro_layout": {
@@ -293,10 +810,18 @@
 			"properties": {
 				"font_family": { "type": "string", "minLength": 1 },
 				"font_size": { "type": "integer", "minimum": 1 },
-				"weight": { "type": "string", "enum": ["normal", "medium", "bold"] },
+				"weight": {
+					"description": "A weight name or a number from 1 to 1000, as in CSS (400 regular, 700 bold). Fonts without that weight use the nearest one they have.",
+					"anyOf": [
+						{ "type": "string", "enum": ["thin", "extralight", "light", "normal", "regular", "medium", "semibold", "bold", "extrabold", "black"] },
+						{ "type": "integer", "minimum": 1, "maximum": 1000 }
+					]
+				},
 				"color": { "$ref": "#/$defs/color" },
 				"align": { "type": "string", "enum": ["left", "center", "right"] },
-				"line_spacing": { "type": "number", "minimum": 0 }
+				"line_spacing": { "type": "number", "minimum": 0 },
+				"letter_spacing": { "type": "number", "description": "Extra pixels after every character; negative tightens." },
+				"word_spacing": { "type": "number", "description": "Extra pixels after every space, on top of letter_spacing." }
 			}
 		},
 		"effects": {

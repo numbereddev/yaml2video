@@ -1,7 +1,7 @@
 $schema: ../../docs/video.schema.json
 version: 2
 template: office-mobility-simple
-template_file: template-simple.yaml
+template_file: template.yaml
 
 metadata:
     title: "Drei kleine Bewegungen fürs Büro"

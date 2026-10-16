@@ -458,7 +458,8 @@ func compileAudioSource(layer project.Layer, plan LayerPlan) (LayerPlan, error) 
 }
 
 func compileTextLayer(p *project.Project, layer project.Layer, plan LayerPlan) (LayerPlan, error) {
-	plan.Font = p.Defaults.Text.Font
+	plan.face = defaultFonts.face(p.Defaults.Text.Font, 400, 0)
+	plan.Font = plan.face.Name
 	plan.FontSize = p.Defaults.Text.Size
 	if layer.Size > 0 {
 		plan.FontSize = layer.Size
@@ -484,7 +485,7 @@ func compileTextLayer(p *project.Project, layer project.Layer, plan LayerPlan) (
 		return plan, fmt.Errorf("text content is required")
 	}
 
-	metrics := measureText(spans, plan.FontSize)
+	metrics := measureText(spans, plan.Font, plan.FontSize)
 	layout := textLayout(layer.LayerLayout, metrics)
 	bounds, err := resolveTransform(p.Video.Width, p.Video.Height, layout, layer.Transform)
 	if err != nil {
@@ -498,8 +499,8 @@ func compileTextLayer(p *project.Project, layer project.Layer, plan LayerPlan) (
 
 	if layer.Width != nil {
 		plan.WrapWidth = plan.Width
-		spans = wrapTextSpans(spans, plan.WrapWidth, plan.FontSize)
-		metrics = measureText(spans, plan.FontSize)
+		spans = wrapTextSpans(spans, plan.WrapWidth, plan.Font, plan.FontSize)
+		metrics = measureText(spans, plan.Font, plan.FontSize)
 
 		if layer.Height == nil {
 			layout = textLayout(layer.LayerLayout, metrics)
@@ -863,7 +864,6 @@ func compose(v, t obj, base string) (*Plan, error) {
 	defaults := object(t["defaults"])
 	theme := object(defaults["theme"])
 	timing := object(defaults["timing"])
-	typography := object(defaults["typography"])
 	audioDefaults := object(defaults["audio"])
 	layout := object(t["layout"])
 	content := object(v["content"])
@@ -872,10 +872,21 @@ func compose(v, t obj, base string) (*Plan, error) {
 		Video: VideoSpec{Width: integer(format["width"]),
 			Height:     integer(format["height"]),
 			FPS:        integer(format["fps"]),
+			CRF:        integer(format["crf"]),
 			Background: str(theme["background"])},
 		WorkDir: filepath.Join(base, ".yaml2video"),
 		Output:  filepath.Join(base, "output.mp4"),
 	}
+	// Font files in fonts/ next to the video, and any listed in the template.
+	fontDirs := []string{filepath.Join(base, "fonts")}
+	for _, entry := range list(object(defaults["typography"])["fonts"]) {
+		dir, err := path(base, entry)
+		if err != nil {
+			return nil, fmt.Errorf("defaults.typography.fonts: %w", err)
+		}
+		fontDirs = append(fontDirs, dir)
+	}
+	p.Video.fonts = fontBookFor(fontDirs)
 
 	logo, err := path(base, assets["logo"])
 	if err != nil {
@@ -883,12 +894,17 @@ func compose(v, t obj, base string) (*Plan, error) {
 	}
 
 	sections := object(t["composition"])["sections"].([]any)
-
-	type boundary struct {
-		transition obj
-		index      int
+	if err := validateLayoutNames(layout); err != nil {
+		return nil, err
 	}
-	var boundaries []boundary
+	adv := newAdvancedContext(p, v, t, base)
+	meta := object(v["metadata"])
+
+	// Each scene's own out and in transitions; lists in a section rotate per scene.
+	type sceneTransitions struct {
+		out, in obj
+	}
+	var sceneTr []sceneTransitions
 	ids := map[string]bool{}
 	sceneIDs := map[string]bool{}
 	hasSlides := false
@@ -930,89 +946,29 @@ func compose(v, t obj, base string) (*Plan, error) {
 			}
 			sceneIDs[name] = true
 
-			d, err := duration(choose(item["duration"], section["default_duration"], timing[role+"_duration"]))
+			layoutName, layoutDef, err := resolveLayout(layout, role, section, item)
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", name, err)
 			}
+			// A custom layout can carry scene defaults: duration and transitions.
+			sceneDefaults := object(layoutDef)
 
-			scene := ScenePlan{ID: name, Duration: d, Background: str(object(layout[role])["background"])}
-			l := object(layout[role])
-			addMedia := func(key string, asset any) error {
-				if asset == nil {
-					return nil
-				}
-				el := object(l[key])
-				if len(el) == 0 {
-					return fmt.Errorf("%s: %s has content but no layout", name, key)
-				}
-				if el["visible"] == false {
-					return nil
-				}
-				source, err := path(base, asset)
-				if err != nil {
-					return err
-				}
-				layer, err := mediaLayer(source, el, object(defaults["media"]), p.Video)
-				if key == "image" && role == "slide" {
-					layer.AltText = str(item["alt_text"])
-				}
-				if err != nil {
-					return fmt.Errorf("%s.%s: %w", name, key, err)
-				}
-				scene.Layers = append(scene.Layers, layer)
-				return nil
+			d, err := duration(choose(item["duration"], sceneDefaults["duration"], section["default_duration"], timing[role+"_duration"]))
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", name, err)
 			}
-
-			if (role == "intro" || role == "outro") && item["image"] != nil && l["image"] == nil {
-				source, err := path(base, item["image"])
-				if err != nil {
-					return nil, err
+			scene := ScenePlan{ID: name, Duration: d, Role: role, Layout: layoutName, item: item, index: i, total: len(items)}
+			// Bindings carry paths as written; elements resolve them like content paths.
+			scene.bindings = sceneBindings(item, name, role, layoutName, i, len(items), str(assets["logo"]), meta)
+			sceneIndex := len(p.Scenes)
+			if isCustomLayout(layoutDef) {
+				elements, background := customLayout(layoutDef, theme)
+				scene.Background = background
+				if err := adv.compileCustomLayout(&scene, sceneIndex, elements); err != nil {
+					return nil, fmt.Errorf("%s: layout %q: %w", name, layoutName, err)
 				}
-				scene.Layers = append(scene.Layers, LayerPlan{Kind: "image", Path: source, Fit: str(choose(object(defaults["media"])["default_fit"], "cover")), X: 0, Y: 0, Width: p.Video.Width, Height: p.Video.Height, Opacity: 1})
-			}
-
-			if (role == "intro" || role == "outro") && l["image"] != nil {
-				if err = addMedia("image", item["image"]); err != nil {
-					return nil, err
-				}
-			} else if role == "slide" {
-				if err = addMedia("image", item["image"]); err != nil {
-					return nil, err
-				}
-			}
-
-			if logo != "" && l["logo"] != nil {
-				if err = addMedia("logo", assets["logo"]); err != nil {
-					return nil, err
-				}
-			}
-
-			alignments := map[int]string{}
-			keys := []string{"title", "subtitle", "label", "text", "tip", "index", "cta"}
-			for _, key := range keys {
-				value := str(item[key])
-				if key == "index" && role == "slide" {
-					value = fmt.Sprintf("%d / %d", i+1, len(items))
-				}
-				if value == "" || l[key] == nil {
-					continue
-				}
-				el := object(l[key])
-				if el["visible"] == false {
-					continue
-				}
-				layer, err := textLayer(value, key, el, typography, theme, p.Video)
-				if err != nil {
-					return nil, fmt.Errorf("%s.%s: %w", name, key, err)
-				}
-				alignments[len(scene.Layers)] = str(object(el["style"])["align"])
-				scene.Layers = append(scene.Layers, layer)
-			}
-
-			if role == "slide" && l["progress"] != nil {
-				if err := addProgress(&scene, object(l["progress"]), i+1, len(items), theme, p.Video); err != nil {
-					return nil, fmt.Errorf("%s.progress: %w", name, err)
-				}
+			} else if err := composeClassicScene(&scene, object(layoutDef), item, p, base, defaults, assets, logo); err != nil {
+				return nil, err
 			}
 
 			track := object(item["audio"])
@@ -1042,12 +998,21 @@ func compose(v, t obj, base string) (*Plan, error) {
 				}
 			}
 
-			scene.ASSPath = filepath.Join(p.WorkDir, "ass", fmt.Sprintf("scene-%04d.ass", len(p.Scenes)))
-			scene.ASS = v2ASSDocument(p.Video, scene, alignments)
-			scene.Output = filepath.Join(p.WorkDir, "scenes", fmt.Sprintf("scene-%04d.mkv", len(p.Scenes)))
+			scene.Output = filepath.Join(p.WorkDir, "scenes", fmt.Sprintf("scene-%04d.mkv", sceneIndex))
 			p.Scenes = append(p.Scenes, scene)
-			tr := object(choose(section["transition_out"], timing["transition"]))
-			boundaries = append(boundaries, boundary{tr, len(p.Scenes) - 1})
+			// The item's transitions win over its layout's, then its section's.
+			sceneTr = append(sceneTr, sceneTransitions{
+				out: pick(choose(item["transition_out"], sceneDefaults["transition_out"], section["transition_out"], timing["transition"]), i),
+				in:  pick(choose(item["transition_in"], sceneDefaults["transition_in"], section["transition_in"]), i),
+			})
+		}
+	}
+	if n := len(p.Scenes); n > 0 {
+		if p.Scenes[n-1].item["transition_out"] != nil {
+			return nil, fmt.Errorf("%s: the last scene has no transition_out", p.Scenes[n-1].ID)
+		}
+		if p.Scenes[0].item["transition_in"] != nil {
+			return nil, fmt.Errorf("%s: the first scene has no transition_in", p.Scenes[0].ID)
 		}
 	}
 
@@ -1062,26 +1027,22 @@ func compose(v, t obj, base string) (*Plan, error) {
 	if object(sections[len(sections)-1])["transition_out"] != nil {
 		return nil, fmt.Errorf("transition on final section")
 	}
+	if object(sections[0])["transition_in"] != nil {
+		return nil, fmt.Errorf("transition_in on first section")
+	}
 
-	for i, b := range boundaries {
-		if i == len(boundaries)-1 {
-			break
+	resolver := newTransitionResolver(v, t, adv)
+	var boundaries []*boundaryPlan
+	for i := 0; i < len(p.Scenes)-1; i++ {
+		b, err := resolver.boundary(p.Scenes[i], p.Scenes[i+1], i, sceneTr[i].out, sceneTr[i+1].in)
+		if err != nil {
+			return nil, fmt.Errorf("%s → %s: %w", p.Scenes[i].ID, p.Scenes[i+1].ID, err)
 		}
-
-		tr := b.transition
-		if str(tr["type"]) == "cut" {
+		if b == nil || b.transition.Type == "cut" && len(b.out)+len(b.in)+len(b.shared) == 0 {
 			continue
 		}
-
-		d, err := duration(tr["duration"])
-		if err != nil {
-			return nil, err
-		}
-
-		if d >= p.Scenes[b.index].Duration || d >= p.Scenes[b.index+1].Duration {
-			return nil, fmt.Errorf("transition exceeds adjacent scene duration")
-		}
-		p.Transitions = append(p.Transitions, BoundaryTransition{FromScene: b.index, Type: str(tr["type"]), Duration: d})
+		boundaries = append(boundaries, b)
+		p.Transitions = append(p.Transitions, b.transition)
 	}
 
 	for i := range p.Scenes {
@@ -1099,6 +1060,9 @@ func compose(v, t obj, base string) (*Plan, error) {
 
 	for i := range p.Transitions {
 		p.Transitions[i].Offset = p.Scenes[p.Transitions[i].FromScene+1].Start
+	}
+	if err := placeTransitionEffects(p, boundaries); err != nil {
+		return nil, err
 	}
 
 	if music := object(assets["music"]); len(music) > 0 {
@@ -1134,6 +1098,26 @@ func compose(v, t obj, base string) (*Plan, error) {
 			}
 
 			p.Music.Ducking = &DuckingPlan{Enabled: true, Amount: num(choose(duck["amount"], json.Number("0.65"))), Attack: attack, Release: release}
+		}
+	}
+
+	if err := applyAdvanced(adv); err != nil {
+		return nil, fmt.Errorf("advanced: %w", err)
+	}
+	// Element clips may have animated or modified classic text.
+	for i := range p.Scenes {
+		if p.Scenes[i].ASS != "" {
+			p.Scenes[i].ASS = v2ASSDocument(p.Video, p.Scenes[i])
+		}
+	}
+	// Transition sides render above every other track of their scenes.
+	for _, b := range boundaries {
+		from, to := &p.Scenes[b.transition.FromScene], &p.Scenes[b.transition.FromScene+1]
+		if len(b.out) > 0 {
+			from.Tracks = append(from.Tracks, TrackPlan{ID: "transition-out", Clips: b.out})
+		}
+		if len(b.in) > 0 {
+			to.Tracks = append(to.Tracks, TrackPlan{ID: "transition-in", Clips: b.in})
 		}
 	}
 
@@ -1268,22 +1252,46 @@ func textLayer(value, key string, el, typography, theme obj, video VideoSpec) (L
 		return LayerPlan{}, fmt.Errorf("text width empty")
 	}
 
-	maxChars := max(1, int(float64(width)/(float64(size)*0.4)))
-	words := strings.Fields(value)
-	var lines []string
-	line := ""
-	for _, word := range words {
-		if line != "" && len([]rune(line))+1+len([]rune(word)) > maxChars {
-			lines = append(lines, line)
-			line = ""
-		}
-		if line != "" {
-			line += " "
-		}
-		line += word
+	font := str(choose(style["font_family"], typography["font_family"], "Arial"))
+	weight, err := parseWeight(style["weight"])
+	if err != nil {
+		return LayerPlan{}, err
 	}
-	if line != "" {
+	face := fontsOf(video).face(font, weight, float64(size))
+	letter, word := num(style["letter_spacing"]), num(style["word_spacing"])
+	fits := func(line string) bool {
+		return face.lineWidth([]rune(line), float64(size), letter, word) <= float64(width)
+	}
+
+	// Explicit line breaks are kept; each paragraph is wrapped on its own, at
+	// the widths its font measures. A paragraph that fits is kept verbatim,
+	// spaces included, so indented code stays indented and texts layered over
+	// each other keep the same character positions; a wrapped one keeps its
+	// indentation on its first line.
+	var lines []string
+	for paragraph := range strings.SplitSeq(strings.ReplaceAll(value, "\r\n", "\n"), "\n") {
+		paragraph = strings.ReplaceAll(paragraph, "\t", "    ")
+		if fits(paragraph) {
+			lines = append(lines, paragraph)
+			continue
+		}
+		line := paragraph[:len(paragraph)-len(strings.TrimLeft(paragraph, " "))]
+		words := 0
+		for word := range strings.FieldsSeq(paragraph) {
+			if words > 0 && !fits(line+" "+word) {
+				lines = append(lines, line)
+				line, words = "", 0
+			}
+			if words > 0 {
+				line += " "
+			}
+			line += word
+			words++
+		}
 		lines = append(lines, line)
+	}
+	for len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
 	}
 	if maxLines := integer(el["max_lines"]); maxLines > 0 && len(lines) > maxLines {
 		return LayerPlan{}, fmt.Errorf("text exceeds max_lines %d", maxLines)
@@ -1301,13 +1309,8 @@ func textLayer(value, key string, el, typography, theme obj, video VideoSpec) (L
 		return LayerPlan{}, fmt.Errorf("text color %q is unsupported by ASS renderer", color)
 	}
 
-	font := str(choose(style["font_family"], typography["font_family"], "Arial"))
-	weight := str(style["weight"])
-	if weight == "medium" {
-		return LayerPlan{}, fmt.Errorf("medium font weight requires render.Plan support")
-	}
-
-	return LayerPlan{Kind: "text", X: x, Y: y, Width: width, Height: height, WrapWidth: width, Font: font, FontSize: size, Color: color, Opacity: 1, Spans: []TextSpan{{Content: strings.Join(lines, "\n"), Color: color, Bold: weight == "bold"}}, Effects: fx}, nil
+	return LayerPlan{Kind: "text", X: x, Y: y, Width: width, Height: height, WrapWidth: width, Font: face.Name, Weight: face.Weight, face: face, FontSize: size, Color: color, Opacity: 1, Spans: []TextSpan{{Content: strings.Join(lines, "\n"), Color: color, Bold: weight >= 600}}, Effects: fx,
+		LetterSpacing: letter, WordSpacing: word}, nil
 }
 
 func ratio(v any) float64 {

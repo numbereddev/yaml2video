@@ -1,0 +1,150 @@
+$schema: ../../docs/video.schema.json
+version: 2
+template: yaml2video-promo
+template_file: template.yaml
+
+metadata:
+    title: "This video is a YAML file"
+    language: en-US
+    audience: "Developers and content teams who publish short videos"
+    description: "A 36-second vertical short about yaml2video, rendered by yaml2video from this file."
+    tags: [yaml2video, ffmpeg, automation, shorts]
+    target_duration_seconds: 36.5
+
+assets:
+    music:
+        path: assets/music.mp3
+        volume: 0.85
+        fade_out: 0.8s
+
+# The template holds every scene's look, timing, motion, sound, and
+# transition. This file picks scenes in order and fills their variables.
+content:
+    intro:
+        variables:
+            { L1: "This video", L2: "is a", L3: "YAML file.", FOOT: "rendered by yaml2video" }
+
+    slides:
+        # The code behind the hook; the template colors it and types it.
+        - id: code
+          layout: code
+          variables:
+              TOP: "That intro?"
+              BOTTOM: "7 lines of YAML."
+              LN: "L29"
+              HIGHLIGHT: '"YAML file\."'
+              CODE: |-
+                  content:
+                    intro:
+                      layout: hook
+                      variables:
+                        L1: "This video"
+                        L2: "is a"
+                        L3: "YAML file."
+          sound_effects: [{ path: assets/sfx-typing-code.wav, at: 0.5s, volume: 0.55 }]
+
+        # The drop: one word per beat.
+        - { id: no-timeline, variables: { BG: "#D7FF3E", WORD: "No\ntimeline." } }
+        - { id: no-editor, variables: { BG: "#F3F1EA", WORD: "No\neditor." } }
+        - { id: just-yaml, layout: shout-ink, variables: { WORD: "Just\nYAML." } }
+
+        - {
+              id: count,
+              layout: count,
+              variables: { NUMBER: "60", CAPTION: "built-in transitions", LN: "L51" },
+          }
+
+        # Each card names the transition that brought it in.
+        - id: t-circle
+          layout: tname-light
+          variables: { BG: "#D7FF3E", NAME: "circle-open" }
+          duration: 1.35s
+          transition_out: { type: slice-up, duration: 0.35s }
+        - id: t-slice
+          layout: tname-dark
+          variables: { BG: "#0B0B0D", NAME: "slice-up" }
+          transition_out: { type: pixelize, duration: 0.4s }
+        - id: t-pixel
+          layout: tname-light
+          variables: { BG: "#F3F1EA", NAME: "pixelize" }
+          duration: 1.45s
+          transition_out: { type: blinds }
+        - id: t-blinds
+          layout: tname-light
+          variables: { BG: "#FF5C39", NAME: "your own.", SUB: "expr: if(lt(mod(Y,96),P*96),B,A)" }
+          transition_out: { type: smooth-up, duration: 0.4s }
+
+        - id: easing
+          layout: easing
+          variables:
+              TITLE: "keyframes"
+              E1: "ease-out"
+              E2: "back-out"
+              E3: "bounce-out"
+              CAPTION: "9 easings · x y scale rotation opacity"
+              LN: "L77"
+
+        - { id: fx, layout: fx, variables: { TITLE: "effect layers", LN: "L87" } }
+
+        - id: templates
+          layout: phones
+          variables:
+              TOP: "One template."
+              BOTTOM: "Endless videos."
+              P1: assets/phone-drop.png
+              P2: assets/phone-tip.png
+              P3: assets/phone-recipe.png
+              LN: "L89"
+
+        - {
+              id: audio,
+              layout: eq,
+              variables:
+                  { TITLE: "Sound, too.", CAPTION: "music · sfx · ducking · -14 LUFS", LN: "L99" },
+          }
+
+        - id: cli
+          layout: cli
+          variables:
+              TITLE: "One command."
+              COMMAND: "$ yaml2video video.yaml"
+              STATUS: "rendering 16 scenes…"
+              STATUS_DONE: "rendered 16 scenes"
+              DONE: "✓ output.mp4  1080×1920"
+              LN: "L106"
+
+    outro:
+        title: "yaml2video"
+        text: "Write it. Render it."
+        cta: "github.com/ondics/yaml2video"
+
+advanced:
+    # Typing fitted to this code: each line pauses, its indentation appears
+    # at once, and the rest types steadily.
+    # Values are character and line counts; the cursor follows by itself.
+    keyframes:
+        typing:
+            - { at: 0s, chars_end: 0, ease: step }
+            - { at: 0.5s, chars_end: 0, ease: linear }
+            - { at: 0.668s, chars_end: 8, ease: step }
+            - { at: 0.728s, chars_end: 10, ease: linear }
+            - { at: 0.854s, chars_end: 16, ease: step }
+            - { at: 0.914s, chars_end: 20, ease: linear }
+            - { at: 1.166s, chars_end: 32, ease: step }
+            - { at: 1.226s, chars_end: 36, ease: linear }
+            - { at: 1.436s, chars_end: 46, ease: step }
+            - { at: 1.496s, chars_end: 52, ease: linear }
+            - { at: 1.832s, chars_end: 68, ease: step }
+            - { at: 1.892s, chars_end: 74, ease: linear }
+            - { at: 2.102s, chars_end: 84, ease: step }
+            - { at: 2.162s, chars_end: 90, ease: linear }
+            - { at: 2.498s, chars_end: 106, ease: step }
+        typing-rows:
+            - { at: 0s, lines_end: 0, ease: step }
+            - { at: 0.5s, lines_end: 1, ease: step }
+            - { at: 0.728s, lines_end: 2, ease: step }
+            - { at: 0.914s, lines_end: 3, ease: step }
+            - { at: 1.226s, lines_end: 4, ease: step }
+            - { at: 1.496s, lines_end: 5, ease: step }
+            - { at: 1.892s, lines_end: 6, ease: step }
+            - { at: 2.162s, lines_end: 7, ease: step }

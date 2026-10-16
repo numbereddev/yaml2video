@@ -8,24 +8,23 @@ import (
 	"github.com/ondics/yaml2video/src/project"
 )
 
-const estimatedGlyphWidth = 0.4
-
-func wrapTextSpans(spans []TextSpan, width, fontSize int) []TextSpan {
+// wrapTextSpans wraps spans to width, measuring words with the font that
+// draws them.
+func wrapTextSpans(spans []TextSpan, width int, font string, fontSize int) []TextSpan {
 	if width <= 0 || fontSize <= 0 {
 		return spans
 	}
 
-	maxCharacters := max(int(float64(width)/(float64(fontSize)*estimatedGlyphWidth)), 1)
-
-	lineLength := 0
+	lineWidth := 0.0
 	for index := range spans {
-		spans[index].Content, lineLength = wrapText(spans[index].Content, lineLength, maxCharacters)
+		measure := func(s string) float64 { return textWidthF(font, spans[index].Bold, s, fontSize) }
+		spans[index].Content, lineWidth = wrapText(spans[index].Content, lineWidth, float64(width), measure)
 	}
 
 	return spans
 }
 
-func wrapText(value string, lineLength, maxCharacters int) (string, int) {
+func wrapText(value string, lineWidth, width float64, measure func(string) float64) (string, float64) {
 	var result strings.Builder
 	var pendingWhitespace string
 
@@ -33,32 +32,36 @@ func wrapText(value string, lineLength, maxCharacters int) (string, int) {
 		if token.isWhitespace {
 			if strings.ContainsRune(token.value, '\n') {
 				result.WriteByte('\n')
-				lineLength = 0
+				lineWidth = 0
 				pendingWhitespace = ""
-			} else if lineLength > 0 {
+			} else if lineWidth > 0 {
 				pendingWhitespace = " "
 			}
 			continue
 		}
 
-		wordLength := len([]rune(token.value))
-		if lineLength > 0 && lineLength+len(pendingWhitespace)+wordLength > maxCharacters {
+		wordWidth := measure(token.value)
+		space := 0.0
+		if pendingWhitespace != "" {
+			space = measure("a"+pendingWhitespace+"a") - measure("aa")
+		}
+		if lineWidth > 0 && lineWidth+space+wordWidth > width {
 			result.WriteByte('\n')
-			lineLength = 0
+			lineWidth = 0
 			pendingWhitespace = ""
 		}
 
-		if pendingWhitespace != "" && lineLength > 0 {
+		if pendingWhitespace != "" && lineWidth > 0 {
 			result.WriteString(pendingWhitespace)
-			lineLength += len(pendingWhitespace)
+			lineWidth += space
 		}
 
 		result.WriteString(token.value)
-		lineLength += wordLength
+		lineWidth += wordWidth
 		pendingWhitespace = ""
 	}
 
-	return result.String(), lineLength
+	return result.String(), lineWidth
 }
 
 type textToken struct {
@@ -112,14 +115,14 @@ func textLayout(layout project.LayerLayout, metrics textMetrics) project.LayerLa
 	return result
 }
 
-func measureText(spans []TextSpan, fontSize int) textMetrics {
+func measureText(spans []TextSpan, font string, fontSize int) textMetrics {
 	lineHeight := max(int(math.Round(float64(fontSize)*1.2)), 1)
 
 	lineWidths := []int{0}
 	for _, span := range spans {
 		lines := strings.Split(span.Content, "\n")
 		for index, line := range lines {
-			lineWidths[len(lineWidths)-1] += textWidth(line, fontSize)
+			lineWidths[len(lineWidths)-1] += textWidth(font, span.Bold, line, fontSize)
 			if index < len(lines)-1 {
 				lineWidths = append(lineWidths, 0)
 			}
@@ -150,7 +153,7 @@ func textItemBackgrounds(spans []TextSpan, metrics textMetrics, layer LayerPlan)
 	for _, span := range spans {
 		lines := strings.Split(span.Content, "\n")
 		for index, value := range lines {
-			width := textWidth(value, layer.FontSize)
+			width := textWidth(layer.Font, span.Bold, value, layer.FontSize)
 			if span.Background != nil && width > 0 {
 				lineStart := layer.X + (layer.Width-metrics.LineWidths[line])/2
 				boxes = append(boxes, TextBackgroundBox{
@@ -173,11 +176,24 @@ func textItemBackgrounds(spans []TextSpan, metrics textMetrics, layer LayerPlan)
 	return boxes
 }
 
-func textWidth(value string, fontSize int) int {
-	width := int(math.Round(float64(len([]rune(value))) * float64(fontSize) * estimatedGlyphWidth))
+// textWidth is the width of value in font at fontSize, as libass draws it.
+func textWidth(font string, bold bool, value string, fontSize int) int {
+	width := int(math.Round(textWidthF(font, bold, value, fontSize)))
 	if width < 1 && value != "" {
 		return 1
 	}
 
 	return width
+}
+
+func textWidthF(font string, bold bool, value string, fontSize int) float64 {
+	if value == "" {
+		return 0
+	}
+	weight := 400
+	if bold {
+		weight = 700
+	}
+	x := defaultFonts.face(font, weight, 0).offsets([]rune(value), float64(fontSize), 0, 0)
+	return x[len(x)-1]
 }

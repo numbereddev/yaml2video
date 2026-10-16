@@ -12,7 +12,7 @@ func example(t *testing.T, kind string) (string, string) {
 	t.Helper()
 	dir := t.TempDir()
 	src := filepath.Join("..", "..", "examples", kind)
-	for _, file := range []string{"video-" + kind + ".yaml", "template-" + kind + ".yaml"} {
+	for _, file := range []string{"video.yaml", "template.yaml"} {
 		raw, err := os.ReadFile(filepath.Join(src, file))
 		if err != nil {
 			t.Fatal(err)
@@ -35,7 +35,7 @@ func example(t *testing.T, kind string) (string, string) {
 		}
 	}
 
-	return filepath.Join(dir, "video-"+kind+".yaml"), filepath.Join(dir, "template-"+kind+".yaml")
+	return filepath.Join(dir, "video.yaml"), filepath.Join(dir, "template.yaml")
 }
 
 func TestSimpleExample(t *testing.T) {

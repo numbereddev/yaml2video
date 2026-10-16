@@ -9,8 +9,8 @@ Install Docker with Compose and `make`, then clone the repository and enter its 
 ```sh
 make build           # build the shared application and development image
 make test            # run go test ./... against the current checkout
-make run ARGS="-n examples/simple/video-simple.yaml"
-make run ARGS="examples/simple/video-simple.yaml"
+make run ARGS="-n examples/simple/video.yaml"
+make run ARGS="examples/simple/video.yaml"
 ```
 
 `make test` mounts the checkout at `/src` to test your current source. `make run` mounts the checkout at `/data` and passes `ARGS` to the CLI, so generated files are saved to your checkout. No interactive container shell is needed.
@@ -26,7 +26,7 @@ Install Go **1.27.1 or later** (see `go.mod`) and clone the repository. From the
 ```sh
 go mod download
 go test ./...
-go run ./src -n examples/simple/video-simple.yaml
+go run ./src -n examples/simple/video.yaml
 ```
 
 For actual rendering, install FFmpeg and fonts. Text and subtitles require FFmpeg's `ass` filter (libass enabled). Dry-run mode (`-n`) validates YAML and prints rendering commands without creating a video.
@@ -40,8 +40,8 @@ gofmt -w src
 go vet ./...
 go test -race ./...
 go build ./...
-go run ./src -n -t examples/normal/template-normal.yaml examples/normal/video-normal.yaml
-go run ./src -n -t examples/complex/template-complex.yaml examples/complex/video-complex.yaml
+go run ./src -n -t examples/normal/template.yaml examples/normal/video.yaml
+go run ./src -n -t examples/complex/template.yaml examples/complex/video.yaml
 ```
 
 CI checks formatting, runs vet and race-enabled tests, builds all packages, and validates the normal and complex examples. `make test` is a quick test run; it does not run all CI checks.

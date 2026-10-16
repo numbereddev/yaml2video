@@ -1,0 +1,88 @@
+$schema: ../../docs/video.schema.json
+version: 2
+template: office-mobility-advanced
+template_file: template.yaml
+
+metadata:
+    title: "Drei kleine Bewegungen fürs Büro"
+    language: de-DE
+    audience: "Büroarbeiterinnen und Büroarbeiter"
+    description: "Das einfache Beispiel mit Layouts, Variablen, Keyframes, Spuren und Effekt-Ebenen."
+    tags: [Büro, Bewegung, Gesundheit, Arbeitsplatz]
+    target_duration_seconds: 16
+
+assets:
+    logo: assets/gesund-am-arbeitsplatz-logo.png
+    music:
+        path: assets/ruhiger-beat.mp3
+
+content:
+    # The intro section renders this with the custom "opener" layout; no
+    # subtitle is given, so its $(subtitle|…) fallback shows.
+    intro:
+        title: "Beweg dich kurz!"
+
+    # The template supplies each scene's look, length, motion, sound, and
+    # transitions; items pick a layout and fill it.
+    slides:
+        # The default classic slide layout.
+        - id: schultern
+          image: assets/schulterkreisen.png
+          text: "Schultern kreisen"
+          tip: "10-mal langsam nach hinten kreisen"
+
+        # The custom "stat" layout reads only these variables (and falls back
+        # for $(label) and $(UNIT)).
+        - id: stat
+          layout: stat
+          variables:
+              NUMBER: "8"
+              UNIT: "Stunden"
+              CAPTION: "sitzen viele von uns pro Tag."
+
+        # A named classic variant; the label feeds the template's label badge,
+        # BADGE its tip badge. This scene overrides its out transition.
+        - id: nacken
+          layout: slide-image-low
+          image: assets/nacken-seitlich.png
+          label: "NACKEN"
+          text: "Nacken entspannen"
+          tip: "Je Seite 10 Sekunden halten"
+          variables: { BADGE: "Tipp: Schultern locker lassen" }
+          transition_out: { type: iris }
+
+        - id: beine
+          image: assets/beine-strecken.png
+          text: "Beine strecken"
+          tip: "Füße abwechselnd nach vorne schieben"
+
+    # Rendered by the outro alias "closing", a custom layout.
+    outro:
+        title: "Dein Körper dankt es dir."
+        text: "Eine kurze Pause reicht schon."
+        cta: "Speichern und später wiederholen"
+
+# The video can still adjust anything; here only what is unique to it.
+# Video tracks stack above the template's tracks.
+advanced:
+    # Drop a template track for this video.
+    disable_tracks: [watermark]
+
+    tracks:
+        # Element clips on one slide's classic layout: the image wiggles from
+        # 1 s, and the tip stays hidden for the first second.
+        - id: legs-motion
+          attach: exercises-beine
+          clips:
+              - type: element
+                target: image
+                start: 1s
+                keyframes:
+                    - { at: 0s, rotation: 0, ease: ease-in-out }
+                    - { at: 0.3s, rotation: 4, ease: ease-in-out }
+                    - { at: 0.6s, rotation: -4, ease: ease-in-out }
+                    - { at: 0.9s, rotation: 0 }
+              - type: element
+                target: tip
+                duration: 1s
+                set: { visible: false }

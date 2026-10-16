@@ -4,7 +4,7 @@ For trusted internal clients only. No authentication.
 
 ## Local input files in Docker
 
-The Compose server mounts the host's `./examples/` folder read-only at `/data`, which is also its working directory. Place video YAML files, templates, and their media there. For example, `examples/simple/video-simple.yaml` on the host becomes `/data/simple/video-simple.yaml` in the container. Host paths outside this mount are not available through it.
+The Compose server mounts the host's `./examples/` folder read-only at `/data`, which is also its working directory. Place video YAML files, templates, and their media there. For example, `examples/simple/video.yaml` on the host becomes `/data/simple/video.yaml` in the container. Host paths outside this mount are not available through it.
 
 To mount another folder, start the server with `make up MOUNT_DIR=/absolute/path/to/files`. The container path is still `/data`. Relative mount paths resolve beside `docker-compose.yaml`. The server reads YAML and media from this mount but does not write render files there.
 
@@ -16,7 +16,7 @@ Render YAML files already present on the server (not uploaded by the request):
 
 ```sh
 curl --fail -N --get http://localhost:8080/render/local \
-  --data-urlencode 'path=simple/video-simple.yaml'
+  --data-urlencode 'path=simple/video.yaml'
 ```
 
 | Query parameter | Meaning |
@@ -31,11 +31,11 @@ For example, override the video's template with an explicit path:
 
 ```sh
 curl --fail -N --get http://localhost:8080/render/local \
-  --data-urlencode 'path=simple/video-simple.yaml' \
-  --data-urlencode 'template=simple/template-simple.yaml'
+  --data-urlencode 'path=simple/video.yaml' \
+  --data-urlencode 'template=simple/template.yaml'
 ```
 
-If the video uses `template_file: template-simple.yaml` but the template is stored under `/data/templates/`, omit `template` and pass `dir=templates`. This changes template lookup only, not the render workspace.
+If the video uses `template_file: template.yaml` but the template is stored under `/data/templates/`, omit `template` and pass `dir=templates`. This changes template lookup only, not the render workspace.
 
 The server generates an ID for each request. Responses use the same `progress`, `complete`, and `error` SSE events as `POST /render`; the `complete` event includes the download URL. Completed MP4s are stored in the server's data volume, not alongside the source YAML, and use the same retention rules. Disconnecting cancels rendering. Missing or invalid files return `400` JSON before streaming starts.
 

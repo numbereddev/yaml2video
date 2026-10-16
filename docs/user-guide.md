@@ -44,7 +44,7 @@ Minimal structure:
 $schema: ./video.schema.json
 version: 2
 template: office-mobility-simple
-template_file: template-simple.yaml
+template_file: template.yaml
 
 metadata:
   title: "Kurze Bewegungspause"
@@ -61,8 +61,8 @@ The selected template supplies the missing layout and timing defaults. `template
 With `template_file` set, render or preview without `-t`:
 
 ```sh
-yaml2video examples/simple/video-simple.yaml
-yaml2video -n examples/simple/video-simple.yaml
+yaml2video examples/simple/video.yaml
+yaml2video -n examples/simple/video.yaml
 ```
 
 An explicit `-t template.yaml` overrides `template_file`. If neither is supplied, rendering errors. Relative `template_file` paths resolve beside the video YAML by default. When `--work-dir` is explicitly supplied, they resolve from that directory instead; a relative `--work-dir` itself resolves from the current working directory. Absolute `template_file` paths are unaffected. Relative explicit `-t` paths always resolve from the current working directory.
@@ -102,6 +102,8 @@ The standard content model has three semantic areas:
 - `intro`: opening title and optional image;
 - `slides`: ordered image-and-text items;
 - `outro`: closing message and required call to action.
+
+The requirements below apply to the template's classic layouts. An item can pick another named layout with `layout:` and fill a custom layout's `$(NAME)` placeholders with `variables:`; see [named and custom layouts](#named-and-custom-layouts).
 
 ### Intro
 
@@ -318,6 +320,39 @@ layout.outro.cta    -> content.outro.cta
 
 An optional element is omitted when its content value is absent. The `logo` binds to `assets.logo`. A slide `progress` element is generated from the current slide number and total number of slides.
 
+## Named and custom layouts
+
+`intro`, `slide`, and `outro` are only the defaults. A template can add as many named layouts as it needs. Each is classic (the fixed elements above) or custom: an ordered list of `text`, `image`, `rect`, `circle`, `progress`, `audio`, and `effect` elements, with no predefined title or tip. Custom elements read the content through `$(NAME)` variables:
+
+```yaml
+# template.yaml
+layout:
+  quote:
+    - type: rect
+      width: 900
+      height: 900
+      corner_radius: 48
+      color: "#16323A"
+      placement: { anchor: center }
+    - type: text
+      text: $(QUOTE)
+      placement: { anchor: center }
+      style: { font_size: 58, weight: bold, align: center }
+      max_width_ratio: 0.72
+      max_lines: 5
+```
+
+```yaml
+# video.yaml
+content:
+  slides:
+    - layout: quote
+      variables:
+        QUOTE: "Eine kurze Pause reicht schon."
+```
+
+A slide without `layout:` uses its section's `layout:`, or else `slide`. See [layouts](layouts.md) for every element field, variable rules, and aliases.
+
 ## Designing short social videos
 
 For office-mobility videos, start with:
@@ -353,19 +388,20 @@ Before rendering, check:
 1. `video.yaml` uses `version: 2` and references the video schema.
 2. `template` matches the selected template's `template_id`; the CLI has either `template_file` or an explicit `-t` path.
 3. Required metadata and at least one slide are present.
-4. Every slide has an image and primary text.
+4. Every slide with a classic layout has an image and primary text; every slide with a custom layout supplies its variables.
 5. Every audio and image path exists and is readable.
 6. Sound-effect offsets fit into their containing sections.
-7. The template contains all three layouts.
+7. The template contains the three default layouts, and every named layout the video selects.
 8. Effect types are suitable for their layout elements.
 9. Durations and transitions produce a positive effective duration.
 10. The result is suitable for the target social platform.
 
 See the included examples for complete documents:
 
-- [`examples/simple/video-simple.yaml`](../examples/simple/video-simple.yaml)
-- [`examples/normal/video-normal.yaml`](../examples/normal/video-normal.yaml)
-- [`examples/complex/video-complex.yaml`](../examples/complex/video-complex.yaml)
-- [`examples/simple/template-simple.yaml`](../examples/simple/template-simple.yaml)
-- [`examples/normal/template-normal.yaml`](../examples/normal/template-normal.yaml)
-- [`examples/complex/template-complex.yaml`](../examples/complex/template-complex.yaml)
+- [`examples/simple/video.yaml`](../examples/simple/video.yaml)
+- [`examples/normal/video.yaml`](../examples/normal/video.yaml)
+- [`examples/complex/video.yaml`](../examples/complex/video.yaml)
+- [`examples/simple/template.yaml`](../examples/simple/template.yaml)
+- [`examples/normal/template.yaml`](../examples/normal/template.yaml)
+- [`examples/complex/template.yaml`](../examples/complex/template.yaml)
+- [`examples/showcase/`](../examples/showcase/): scene templates that carry timing, motion, sound, and transitions, so the video only picks scenes and fills variables
