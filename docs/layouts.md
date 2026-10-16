@@ -62,13 +62,50 @@ Any role can use a custom layout.
 
 **Aliases** are a layout name instead of a definition.
 
+## Scene templates
+
+A custom layout object can also carry the defaults of every scene that uses it, so a template describes whole scenes (look, timing, motion, and transitions) and a video only stitches them together and fills in variables:
+
+```yaml
+layout:
+    stat:
+        background: "#7DE2A8"
+        duration: 3s                                  # unless the item sets one
+        transition_out: { type: slide-left, duration: 0.4s }
+        transition_in: { type: fade, duration: 0.3s }
+        elements: [ ... ]
+        tracks:                                       # attached to this layout
+            - id: count-up
+              clips:
+                  - { type: element, target: number, start: 1s, set: { text: "$(NUMBER)+" } }
+```
+
+```yaml
+# video.yaml: pick scenes, fill variables, override a thing or two
+content:
+    slides:
+        - { layout: stat, variables: { NUMBER: "8" } }
+        - layout: stat
+          variables: { NUMBER: "3" }
+          duration: 2s                                # overrides the layout
+          transition_out: { type: iris }              # overrides the layout
+```
+
+| Setting | First found among |
+| --- | --- |
+| Duration | the item's `duration`, the layout's `duration`, the section's `default_duration`, `defaults.timing.<role>_duration` |
+| Out transition | the video's `scene_transitions`, the item's `transition_out`, the layout's, the section's, `defaults.timing.transition` |
+| In transition | the video's `scene_transitions`, the item's `transition_in`, the layout's, the section's |
+
+Layout tracks are ordinary [tracks](advanced.md#tracks-and-clips) without `attach`: they repeat in every scene that uses the layout and render below the template's `advanced.tracks`. A layout's transitions are ignored where there is no neighboring scene; an item's `transition_out` on the last scene, or `transition_in` on the first, is an error.
+
 ## Custom elements
 
 Elements render in list order, so later elements stack on top of earlier ones, text included. Every element accepts:
 
 | Field | Meaning |
 | --- | --- |
-| `type` | `text`, `image`, `rect`, `circle`, `progress`, `audio`, or `effect` |
+| `type` | `text`, `image`, `rect`, `circle`, `progress`, `audio`, `effect`, or `folder` |
 | `id` | Names the element so advanced element clips can target it |
 | `start`, `duration` | When the element shows within the scene (defaults: the whole scene) |
 | `keyframes` | Animation, as in [advanced mode](advanced.md#keyframes) (presets are allowed) |
@@ -76,12 +113,15 @@ Elements render in list order, so later elements stack on top of earlier ones, t
 
 | Type | Fields |
 | --- | --- |
-| `text` | `text`, `placement`, `style`, `effects`, `max_width_ratio`, `max_lines` |
+| `text` | `text`, `placement`, `style`, `effects`, `max_width_ratio`, `max_lines`, `reveal`, `match`, `replace` |
 | `image` | `path`, `placement`, `max_width_ratio`, `max_height_ratio`, `fit`, `shape`, `effects`, `opacity` |
 | `rect`, `circle` | `width`, `height` (pixels), `color`, `placement`, `corner_radius` (rect), `opacity` |
 | `progress` | `placement`, `width_ratio`, `thickness`, `color`, `background_color` (slides only) |
 | `audio` | `path`, `volume`, `fade_in`, `fade_out`, `ducks` |
 | `effect` | `effects` (an effect-layer stack applied to the elements below it), `opacity` |
+| `folder` | `clips` (any elements, folders included), `pivot`, `opacity`, `effects`; see [folders](advanced.md#folders) |
+
+Text style also takes `letter_spacing` and `word_spacing`, extra pixels after every character and after every space. A line of text that fits keeps its spaces, so indented code stays indented. `reveal` shows part of a text; see [text reveal](advanced.md#text-reveal).
 
 ## Variables
 
@@ -111,7 +151,7 @@ Paths from variables resolve relative to the video YAML, like any content path.
 
 ## Targeting layout elements (advanced mode)
 
-Advanced tracks can change layout elements in place. An `element` clip names its `target`: a custom element's `id`, or a classic element's name (`title`, `image`, `text`, `tip`, …). Attach the track to a role, to a layout name (every scene using that layout), or to a scene:
+Advanced tracks can change layout elements in place. An `element` clip names its `target`: a custom element's `id` (also inside a folder, at any depth), or a classic element's name (`title`, `image`, `text`, `tip`, …). Attach the track to a role, to a layout name (every scene using that layout), or to a scene:
 
 ```yaml
 advanced:

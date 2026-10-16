@@ -188,10 +188,20 @@ layout:
               max_width_ratio: 0.72
               max_lines: 2
               keyframes: rise-in
+        # Layout tracks repeat in every scene using this layout: here, a slow
+        # camera push across the whole intro.
+        tracks:
+            - id: intro-camera
+              clips:
+                  - type: effect
+                    keyframes:
+                        - { at: 0s, scale: 1 }
+                        - { at: -0s, scale: 1.06 }
 
     # A fully custom slide layout: no predefined fields, only $(VARIABLES).
     stat:
         background: "#7DE2A8"
+        duration: 3s                         # the scene length unless the item sets one
         elements:
             - type: image                    # only when the slide has an image
               path: $(image)
@@ -289,8 +299,37 @@ layout:
               max_width_ratio: 0.8
               max_lines: 1
               effects: [{ type: glass_panel, color: "#7DE2A8", opacity: 0.95, padding: [28, 22] }]
+        tracks:
+            # A pop that ducks the music as the outro lands; volume keyframes shape it.
+            - id: outro-sound
+              clips:
+                  - type: audio
+                    path: assets/pop.wav
+                    start: 0.1s
+                    duration: 0.35s
+                    volume: 0.9
+                    fade_in: 0.01s
+                    fade_out: 0.1s
+                    ducks: true
+                    keyframes:
+                        - { at: 0s, volume: 0.4, ease: ease-out }
+                        - { at: 0.1s, volume: 1 }
+            # A white flash with chromatic split into the outro.
+            - id: outro-hit
+              clips:
+                  - type: effect
+                    duration: 0.5s
+                    effects:
+                        - { type: tint, color: "#FFFFFF", opacity: 0.6 }
+                        - { type: rgb_split, amount: 8 }
+                    keyframes:
+                        - { at: 0s, opacity: 1, ease: ease-out }
+                        - { at: 0.5s, opacity: 0 }
 
 advanced:
+    master:
+        loudness: -16
+
     # Reusable keyframes: times are relative to the element or clip; negative
     # times count back from its end.
     keyframes:
@@ -424,6 +463,23 @@ advanced:
                 max_width_ratio: 0.3
                 max_lines: 1
                 effects: [{ type: glass_panel, color: "#7DE2A8", opacity: 0.95, padding: [20, 12] }]
+
+        # A tip badge on slides using the image-low variant (attached by layout
+        # name), when the slide's item gives a BADGE variable.
+        - id: tip-badge
+          attach: slide-image-low
+          clips:
+              - type: text
+                text: $(BADGE)
+                optional: true
+                placement: { anchor: bottom-center, offset_y: -70 }
+                style: { font_size: 34, weight: bold, color: "#101820", align: center }
+                max_width_ratio: 0.6
+                max_lines: 1
+                effects:
+                    - { type: glass_panel, color: "#7DE2A8", opacity: 0.95, padding: [24, 14] }
+                start: 0.5s
+                duration: 2s
 
         # A title watermark; the video drops it with disable_tracks.
         - id: watermark

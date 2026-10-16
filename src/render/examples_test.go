@@ -2,10 +2,31 @@ package render
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
+
+// The showcase's scene templates set every scene's length and transition, so
+// its scenes start on a 120 BPM beat grid.
+func TestShowcaseExample(t *testing.T) {
+	p, err := Load(filepath.Join("..", "..", "examples", "showcase", "video.yaml"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Scenes) != 16 || p.Duration != 36500*time.Millisecond {
+		t.Fatalf("scenes=%d duration=%s", len(p.Scenes), p.Duration)
+	}
+	for _, scene := range p.Scenes {
+		if scene.Start%(500*time.Millisecond) != 0 {
+			t.Errorf("%s starts off the beat at %s", scene.ID, scene.Start)
+		}
+	}
+	if _, err := p.Commands(); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestExamplePlans(t *testing.T) {
 	for _, tc := range []struct {

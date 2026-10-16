@@ -3,6 +3,7 @@ package render
 import (
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -11,8 +12,17 @@ import (
 
 // Animatable properties. Positions are pixel offsets from the element's rest
 // position, rotation is in degrees clockwise, and scale multiplies the size
-// around the element's center.
-var keyframeProperties = []string{"x", "y", "scale", "scale_x", "scale_y", "rotation", "opacity", "volume"}
+// around the element's center. The reveal properties (text only) count the
+// characters and lines of a text: a number, or a percentage of the total
+// written as a string ("100%").
+var keyframeProperties = []string{"x", "y", "scale", "scale_x", "scale_y", "rotation", "opacity", "volume",
+	"chars_start", "chars_end", "lines_start", "lines_end"}
+
+// revealProps are the text reveal properties.
+var revealProps = []string{"chars_start", "chars_end", "lines_start", "lines_end"}
+
+// unitProps are the properties limited to 0–1.
+var unitProps = map[string]bool{"opacity": true, "volume": true}
 
 var easings = map[string]bool{
 	"linear": true, "step": true, "ease-in": true, "ease-out": true, "ease-in-out": true,
@@ -25,6 +35,9 @@ type Keyframe struct {
 	Value float64
 	// Ease shapes the segment from this keyframe to the next one.
 	Ease string
+	// Relative marks a reveal value written as a percentage: Value is then a
+	// fraction of the text's total, resolved when the text is rendered.
+	Relative bool
 }
 
 // Animation holds keyframed properties relative to the start of their owner
@@ -48,21 +61,50 @@ func (a *Animation) Has(names ...string) bool {
 
 // Value evaluates a property at t, falling back to def when it is not animated.
 func (a *Animation) Value(name string, t time.Duration, def float64) float64 {
+	return a.ValueOf(name, t, def, 1)
+}
+
+// ValueOf is Value with relative (percentage) keyframes scaled by total.
+func (a *Animation) ValueOf(name string, t time.Duration, def, total float64) float64 {
 	if a == nil || len(a.Props[name]) == 0 {
 		return def
 	}
 	frames := a.Props[name]
+	value := func(f Keyframe) float64 {
+		if f.Relative {
+			return f.Value * total
+		}
+		return f.Value
+	}
 	if t <= frames[0].At {
-		return frames[0].Value
+		return value(frames[0])
 	}
 	for i := 0; i < len(frames)-1; i++ {
 		from, to := frames[i], frames[i+1]
 		if t < to.At {
 			p := float64(t-from.At) / float64(to.At-from.At)
-			return from.Value + (to.Value-from.Value)*ease(from.Ease, p)
+			return value(from) + (value(to)-value(from))*ease(from.Ease, p)
 		}
 	}
-	return frames[len(frames)-1].Value
+	return value(frames[len(frames)-1])
+}
+
+// revealValue parses a reveal property: a count of at least 0, or a
+// percentage string ("50%"), returned as a fraction with relative set.
+func revealValue(v any) (value float64, relative bool, err error) {
+	if s, ok := v.(string); ok {
+		number, found := strings.CutSuffix(strings.TrimSpace(s), "%")
+		pct, err := strconv.ParseFloat(number, 64)
+		if !found || err != nil || pct < 0 {
+			return 0, false, fmt.Errorf("%q is neither a count nor a percentage like \"50%%\"", s)
+		}
+		return pct / 100, true, nil
+	}
+	n, ok := number(v)
+	if !ok || n < 0 {
+		return 0, false, fmt.Errorf("%v must be a count of at least 0, or a percentage like \"50%%\"", v)
+	}
+	return n, false, nil
 }
 
 // Expr renders a property as an FFmpeg expression of tvar (seconds since the
@@ -83,6 +125,21 @@ func (a *Animation) Expr(name, tvar string, def float64) string {
 		expr = fmt.Sprintf("if(lt(%s,%s),%s,%s)", tvar, num6(to.At.Seconds()), segment, expr)
 	}
 	return fmt.Sprintf("if(lt(%s,%s),%s,%s)", tvar, num6(frames[0].At.Seconds()), num6(frames[0].Value), expr)
+}
+
+// reaches0 reports whether any of the named properties has a keyframe at 0.
+func (a *Animation) reaches0(names ...string) bool {
+	if a == nil {
+		return false
+	}
+	for _, name := range names {
+		for _, f := range a.Props[name] {
+			if f.Value == 0 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // End returns the time of the last keyframe across all properties.
@@ -221,13 +278,19 @@ func parseKeyframes(raw any, length time.Duration, allowed map[string]bool) (*An
 			if !allowed[name] {
 				return nil, fmt.Errorf("keyframe %d: property %q cannot be animated here", i, name)
 			}
-			anim.Props[name] = append(anim.Props[name], Keyframe{At: at, Value: num(value), Ease: easing})
+			frame := Keyframe{At: at, Value: num(value), Ease: easing}
+			if slices.Contains(revealProps, name) {
+				if frame.Value, frame.Relative, err = revealValue(value); err != nil {
+					return nil, fmt.Errorf("keyframe %d: %s: %w", i, name, err)
+				}
+			}
+			anim.Props[name] = append(anim.Props[name], frame)
 		}
 	}
 	for name, frames := range anim.Props {
 		sort.SliceStable(frames, func(i, j int) bool { return frames[i].At < frames[j].At })
 		for _, f := range frames {
-			if (name == "opacity" || name == "volume") && (f.Value < 0 || f.Value > 1) {
+			if unitProps[name] && (f.Value < 0 || f.Value > 1) {
 				return nil, fmt.Errorf("%s keyframes must be between 0 and 1", name)
 			}
 		}

@@ -164,7 +164,7 @@ func TestAdvancedExamplePlan(t *testing.T) {
 		t.Fatal(err)
 	}
 	all := strings.Join(flatten(commands), " ")
-	for _, want := range []string{"perspective", "geq", "blend", "vignette", "scene-0002-layout-text-00.ass", "scene-0003-track-04-text-00.ass", "loudnorm", "sidechaincompress"} {
+	for _, want := range []string{"perspective", "geq", "blend", "vignette", "scene-0002-layout-text-00.ass", "scene-0003-track-07-text-00.ass", "loudnorm", "sidechaincompress"} {
 		if !strings.Contains(all, want) {
 			t.Errorf("commands lack %q", want)
 		}
@@ -196,8 +196,8 @@ func TestAdvancedErrors(t *testing.T) {
 	}{
 		{"unknown preset", "keyframes: pop-in\n              - type: text", "keyframes: missing\n              - type: text", "unknown keyframe preset", true},
 		{"unknown binding", `"$(index)/$(total)"`, `"$(nope)"`, "unknown variable $(nope)", true},
-		{"clip too long", "start: 0.5s\n                duration: 2s", "start: 0.5s\n                duration: 9s", "exceeds its owner", false},
-		{"unknown scene", "attach: exercises-nacken", "attach: exercises-hals", "matches no scene", false},
+		{"clip too long", "start: 0.5s\n                duration: 2s", "start: 0.5s\n                duration: 9s", "exceeds its owner", true},
+		{"unknown scene", "attach: exercises-beine", "attach: exercises-hals", "matches no scene", false},
 		{"bad disable", "disable_tracks: [watermark]", "disable_tracks: [watermark, nope]", "unknown track", false},
 		{"element target missing", "target: caption", "target: captoin", `target "captoin" matches no element`, true},
 		{"bad clip field", "corner_radius: 4", "corner_radius: 4\n                bogus: 1", "unknown property bogus", true},
@@ -330,14 +330,14 @@ func TestTrackOffset(t *testing.T) {
 	load := func(t *testing.T, find, replace string) (*Plan, error) {
 		t.Helper()
 		video, tmpl := example(t, "advanced")
-		raw, err := os.ReadFile(video)
+		raw, err := os.ReadFile(tmpl)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if !strings.Contains(string(raw), find) {
 			t.Fatalf("fixture lacks %q", find)
 		}
-		if err := os.WriteFile(video, []byte(strings.Replace(string(raw), find, replace, 1)), 0o600); err != nil {
+		if err := os.WriteFile(tmpl, []byte(strings.Replace(string(raw), find, replace, 1)), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		return Load(video, tmpl)
@@ -353,7 +353,7 @@ func TestTrackOffset(t *testing.T) {
 		t.Fatal("tip-badge track missing")
 		return ClipPlan{}
 	}
-	const attach = "attach: exercises-nacken\n"
+	const attach = "attach: slide-image-low\n"
 
 	// The 3 s scene's badge clip starts 0.5 s into the track.
 	for _, tc := range []struct {

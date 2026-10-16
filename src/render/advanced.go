@@ -6,6 +6,7 @@ import (
 	"maps"
 	"math"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -21,6 +22,8 @@ import (
 
 var (
 	visualProps = map[string]bool{"x": true, "y": true, "scale": true, "scale_x": true, "scale_y": true, "rotation": true, "opacity": true}
+	textProps   = map[string]bool{"x": true, "y": true, "scale": true, "scale_x": true, "scale_y": true, "rotation": true, "opacity": true,
+		"chars_start": true, "chars_end": true, "lines_start": true, "lines_end": true}
 	effectProps = map[string]bool{"x": true, "y": true, "scale": true, "scale_x": true, "scale_y": true, "rotation": true, "opacity": true}
 	audioProps  = map[string]bool{"volume": true}
 	// $(NAME), ${NAME}, either with |fallback; $$ is a literal $.
@@ -38,6 +41,7 @@ type advancedContext struct {
 	theme      obj
 	media      obj
 	audio      obj
+	folders    int // numbers folder canvases, for unique ASS file names
 }
 
 func newAdvancedContext(p *Plan, v, t obj, base string) *advancedContext {
@@ -57,7 +61,11 @@ func newAdvancedContext(p *Plan, v, t obj, base string) *advancedContext {
 func applyAdvanced(ctx *advancedContext) error {
 	p, t, v := ctx.plan, ctx.template, ctx.video
 	tadv, vadv := object(t["advanced"]), object(v["advanced"])
-	if len(tadv) == 0 && len(vadv) == 0 {
+	layoutTracks, err := ctx.layoutTracks()
+	if err != nil {
+		return err
+	}
+	if len(tadv) == 0 && len(vadv) == 0 && len(layoutTracks) == 0 {
 		return nil
 	}
 
@@ -75,7 +83,8 @@ func applyAdvanced(ctx *advancedContext) error {
 	}
 	seen := map[string]bool{}
 	var tracks []obj
-	for _, source := range []obj{tadv, vadv} {
+	// Layout tracks first, then the template's, then the video's.
+	for _, source := range []obj{{"tracks": layoutTracks}, tadv, vadv} {
 		for _, raw := range list(source["tracks"]) {
 			track := object(raw)
 			id := str(track["id"])
@@ -100,6 +109,23 @@ func applyAdvanced(ctx *advancedContext) error {
 		}
 	}
 	return nil
+}
+
+// layoutTracks returns the tracks custom layouts carry, attached to their
+// layout, in layout-name order.
+func (c *advancedContext) layoutTracks() ([]any, error) {
+	layouts := object(c.template["layout"])
+	var tracks []any
+	for _, name := range slices.Sorted(maps.Keys(layouts)) {
+		for _, raw := range list(object(layouts[name])["tracks"]) {
+			track := object(raw)
+			if track["attach"] != nil {
+				return nil, fmt.Errorf("layout %q: track %q: layout tracks attach to their layout; remove attach", name, track["id"])
+			}
+			tracks = append(tracks, merge(track, obj{"attach": name}))
+		}
+	}
+	return tracks, nil
 }
 
 func merge(a, b obj) obj {
@@ -147,7 +173,10 @@ func (c *advancedContext) animateElements(animate obj) error {
 			if err != nil {
 				return fmt.Errorf("animate.%s.%s: %w", scene.Role, layer.Element, err)
 			}
-			anim, err := parseKeyframes(frames, scene.Duration, visualProps)
+			anim, err := parseKeyframes(frames, scene.Duration, textProps)
+			if err == nil {
+				err = checkReveal(*layer, anim)
+			}
 			if err != nil {
 				return fmt.Errorf("animate.%s.%s: %w", scene.Role, layer.Element, err)
 			}
@@ -193,12 +222,18 @@ func (c *advancedContext) resolvePresets(v any, presets obj, kind string) ([]any
 	return out, nil
 }
 
-// owner is the timeline a track is attached to: one scene or the whole video.
+// owner is the timeline a track is attached to: one scene or the whole video,
+// or a folder within one of them.
 type owner struct {
 	scene    *ScenePlan // nil for the video
 	index    int
 	length   time.Duration
 	bindings map[string]string
+	// offset is where this timeline starts on the scene's (or video's): the
+	// folder's start for a folder's children. Audio is placed with it.
+	offset time.Duration
+	// variant marks a rebuilt element variant, whose audio is already mixed.
+	variant bool
 }
 
 // owners resolves a track's attach value: the video, a role, a layout name,
@@ -368,6 +403,8 @@ func (c *advancedContext) buildClip(clip obj, o owner, start, length time.Durati
 		allowed = audioProps
 	case "effect":
 		allowed = effectProps
+	case "text":
+		allowed = textProps
 	}
 	frames, err := c.keyframeList(clip["keyframes"])
 	if err != nil {
@@ -427,13 +464,42 @@ func (c *advancedContext) buildClip(clip obj, o owner, start, length time.Durati
 		if err != nil {
 			return nil, err
 		}
+		if r := object(clip["replace"]); len(r) > 0 {
+			re, err := bindPattern(r["pattern"], o.bindings)
+			if err != nil {
+				return nil, fmt.Errorf("replace: %w", err)
+			}
+			with, err := bind(str(r["with"]), o.bindings)
+			if err != nil {
+				return nil, fmt.Errorf("replace: %w", err)
+			}
+			value = re.ReplaceAllString(value, with)
+		}
 		layer, err := textLayer(value, "text", clip, c.typography, c.theme, video)
 		if err != nil {
 			return nil, err
 		}
+		if clip["match"] != nil {
+			if layer.Match, err = bindPattern(clip["match"], o.bindings); err != nil {
+				return nil, fmt.Errorf("match: %w", err)
+			}
+		}
 		layer.Align = str(object(clip["style"])["align"])
 		layer.Duration = length
 		layer.Animation = anim
+		if r := object(clip["reveal"]); len(r) > 0 {
+			reveal := defaultReveal
+			for name, dst := range map[string]*RevealValue{"chars_start": &reveal.CharsStart, "chars_end": &reveal.CharsEnd,
+				"lines_start": &reveal.LinesStart, "lines_end": &reveal.LinesEnd} {
+				if r[name] == nil {
+					continue
+				}
+				if dst.Value, dst.Relative, err = revealValue(r[name]); err != nil {
+					return nil, fmt.Errorf("reveal.%s: %w", name, err)
+				}
+			}
+			layer.Reveal = &reveal
+		}
 		if anim != nil && hasEffect(layer.Effects, "glass_panel") {
 			return nil, fmt.Errorf("animated text cannot use glass_panel")
 		}
@@ -464,12 +530,15 @@ func (c *advancedContext) buildClip(clip obj, o owner, start, length time.Durati
 		if err != nil {
 			return nil, err
 		}
-		a, err := audioLayer(merge(clip, obj{"path": value}), c.audio, c.base, start, length)
+		a, err := audioLayer(merge(clip, obj{"path": value}), c.audio, c.base, o.offset+start, length)
 		if err != nil {
 			return nil, err
 		}
 		a.SoundEffect = clip["ducks"] != true
 		a.VolumeAnimation = anim
+		if o.variant {
+			return nil, nil
+		}
 		if o.scene == nil {
 			c.plan.Audio = append(c.plan.Audio, a)
 		} else {
@@ -483,12 +552,220 @@ func (c *advancedContext) buildClip(clip obj, o owner, start, length time.Durati
 		}
 		effect.ID, effect.Start, effect.def, effect.bindings = plan.ID, start, clip, o.bindings
 		plan = effect
+	case "folder":
+		folder, err := c.buildFolder(clip, o, start, length)
+		if err != nil {
+			return nil, err
+		}
+		folder.Layer.Animation = anim
+		plan.Layer, plan.Folder = folder.Layer, folder.Folder
 	case "element":
 		return nil, fmt.Errorf("element clips target layout elements and belong in advanced tracks")
 	default:
 		return nil, fmt.Errorf("unsupported clip type %q", kind)
 	}
 	return []ClipPlan{plan}, nil
+}
+
+// bindPattern compiles a regular expression after filling its $(VARIABLES).
+func bindPattern(v any, bindings map[string]string) (*regexp.Regexp, error) {
+	pattern, err := bind(str(v), bindings)
+	if err != nil {
+		return nil, err
+	}
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil, fmt.Errorf("pattern %q: %w", pattern, err)
+	}
+	return re, nil
+}
+
+// buildFolder compiles a folder's children on a timeline that starts with the
+// folder, in list order like a track; folders nest. The folder's effects run
+// over its composited children, and its keyframes (set by the caller) move
+// the whole group around its pivot: the children's center unless set.
+func (c *advancedContext) buildFolder(clip obj, o owner, start, length time.Duration) (ClipPlan, error) {
+	c.folders++
+	children := TrackPlan{ID: "folder", ASSPrefix: fmt.Sprintf("folder-%03d", c.folders)}
+	inner := owner{scene: o.scene, index: o.index, length: length, bindings: o.bindings, offset: o.offset + start, variant: o.variant}
+	for i, raw := range list(clip["clips"]) {
+		child := object(raw)
+		if str(child["type"]) == "element" {
+			return ClipPlan{}, fmt.Errorf("folder clip %d: element clips belong in tracks", i)
+		}
+		if err := c.addClip(&children, child, inner, 0); err != nil {
+			label := fmt.Sprintf("folder clip %d (%s)", i, child["type"])
+			if id := str(child["id"]); id != "" {
+				label = fmt.Sprintf("folder clip %q", id)
+			}
+			return ClipPlan{}, fmt.Errorf("%s: %w", label, err)
+		}
+	}
+	if clip["effects"] != nil {
+		effect, err := c.effectClip(obj{"type": "effect", "effects": clip["effects"]}, length)
+		if err != nil {
+			return ClipPlan{}, fmt.Errorf("folder effects: %w", err)
+		}
+		children.Clips = append(children.Clips, effect)
+	}
+
+	video := c.plan.Video
+	pivot := [2]float64{float64(video.Width) / 2, float64(video.Height) / 2}
+	if clip["pivot"] != nil {
+		x, y := bounds(obj{"placement": clip["pivot"]}, video, 0, 0)
+		pivot = [2]float64{float64(x), float64(y)}
+	} else if box, ok := clipsBounds(children.Clips); ok {
+		pivot = [2]float64{float64(box[0]+box[2]) / 2, float64(box[1]+box[3]) / 2}
+	}
+	canvas := folderCanvas(children.Clips, video)
+	children.Canvas = &canvas
+	layer := LayerPlan{Kind: "folder", X: canvas.X, Y: canvas.Y, Width: canvas.W, Height: canvas.H, Duration: length, Pivot: &pivot,
+		Opacity: num(choose(clip["opacity"], jsonNumber(1)))}
+	return ClipPlan{Kind: "folder", Layer: layer, Folder: &children}, nil
+}
+
+// canvasMargin pads folder canvases for glows, blurs, outlines, and shakes.
+const canvasMargin = 32
+
+// folderCanvas is the area a folder's children can reach: their boxes grown
+// by their own keyframes, plus a margin, in frame coordinates and possibly
+// beyond the frame (within one frame size on each side). It is the frame
+// when nothing has a box.
+func folderCanvas(clips []ClipPlan, video VideoSpec) Rect {
+	var box [4]float64
+	found := false
+	for _, clip := range clips {
+		b, ok := clipExtent(clip)
+		if !ok {
+			continue
+		}
+		if !found {
+			box, found = b, true
+			continue
+		}
+		box = [4]float64{math.Min(box[0], b[0]), math.Min(box[1], b[1]), math.Max(box[2], b[2]), math.Max(box[3], b[3])}
+	}
+	if !found {
+		return Rect{0, 0, video.Width, video.Height}
+	}
+	w, h := float64(video.Width), float64(video.Height)
+	left := math.Max(math.Floor(box[0])-canvasMargin, -w)
+	top := math.Max(math.Floor(box[1])-canvasMargin, -h)
+	right := math.Min(math.Ceil(box[2])+canvasMargin, 2*w)
+	bottom := math.Min(math.Ceil(box[3])+canvasMargin, 2*h)
+	// Even sizes keep chroma-subsampled steps exact.
+	cw, ch := int(right-left+1)&^1, int(bottom-top+1)&^1
+	return Rect{int(left), int(top), max(cw, 2), max(ch, 2)}
+}
+
+// clipExtent is the frame area a clip can cover over its keyframes.
+func clipExtent(clip ClipPlan) ([4]float64, bool) {
+	l := clip.Layer
+	var box [4]float64
+	switch clip.Kind {
+	case "folder":
+		c := clip.Folder.Canvas
+		box = [4]float64{float64(c.X), float64(c.Y), float64(c.X + c.W), float64(c.Y + c.H)}
+	case "text":
+		// Layout boxes come from estimated glyph widths, so measure generously.
+		var text strings.Builder
+		for _, span := range l.Spans {
+			text.WriteString(span.Content)
+		}
+		lines := strings.Split(text.String(), "\n")
+		longest := 0
+		for _, line := range lines {
+			longest = max(longest, len([]rune(line)))
+		}
+		size := float64(l.FontSize)
+		tw := float64(longest)*size*0.65 + size
+		th := float64(len(lines))*size*1.25 + size
+		x := float64(l.X) + float64(l.Width)/2 - tw/2
+		switch l.Align {
+		case "left":
+			x = float64(l.X) - size/2
+		case "right":
+			x = float64(l.X+l.Width) - tw + size/2
+		}
+		cy := float64(l.Y) + float64(l.Height)/2
+		box = [4]float64{x, cy - th/2, x + tw, cy + th/2}
+	case "image", "rect", "circle", "box":
+		box = [4]float64{float64(l.X), float64(l.Y), float64(l.X + l.Width), float64(l.Y + l.Height)}
+	default:
+		return box, false
+	}
+	return growByAnimation(box, l.Animation), true
+}
+
+// growByAnimation widens a box by the range of its x/y keyframes, its largest
+// scale, and its rotation, with headroom for overshooting easings.
+func growByAnimation(box [4]float64, anim *Animation) [4]float64 {
+	if anim == nil {
+		return box
+	}
+	span := func(name string) (lo, hi float64) {
+		for _, f := range anim.Props[name] {
+			lo, hi = math.Min(lo, f.Value), math.Max(hi, f.Value)
+		}
+		over := (hi - lo) * 0.15
+		return lo - over, hi + over
+	}
+	x0, x1 := span("x")
+	y0, y1 := span("y")
+	box = [4]float64{box[0] + x0, box[1] + y0, box[2] + x1, box[3] + y1}
+
+	peak := func(name string) float64 {
+		m := 1.0
+		for _, f := range anim.Props[name] {
+			m = math.Max(m, f.Value)
+		}
+		return m
+	}
+	cx, cy := (box[0]+box[2])/2, (box[1]+box[3])/2
+	hw, hh := (box[2]-box[0])/2, (box[3]-box[1])/2
+	if anim.Has("scale", "scale_x", "scale_y") {
+		s := peak("scale") * 1.1
+		hw, hh = hw*s*peak("scale_x"), hh*s*peak("scale_y")
+	}
+	if anim.Has("rotation") {
+		r := math.Hypot(hw, hh)
+		hw, hh = r, r
+	}
+	return [4]float64{cx - hw, cy - hh, cx + hw, cy + hh}
+}
+
+// clipsBounds returns the frame box (left, top, right, bottom) covering the
+// visual clips at their rest positions, through nested folders.
+func clipsBounds(clips []ClipPlan) ([4]int, bool) {
+	var box [4]int
+	found := false
+	grow := func(b [4]int) {
+		if !found {
+			box, found = b, true
+			return
+		}
+		box = [4]int{min(box[0], b[0]), min(box[1], b[1]), max(box[2], b[2]), max(box[3], b[3])}
+	}
+	for _, clip := range clips {
+		switch clip.Kind {
+		case "folder":
+			if b, ok := clipsBounds(clip.Folder.Clips); ok {
+				grow(b)
+			}
+		case "image", "rect", "circle", "text", "box":
+			l := clip.Layer
+			grow([4]int{l.X, l.Y, l.X + l.Width, l.Y + l.Height})
+		}
+	}
+	return box, found
+}
+
+// checkReveal rejects reveal keyframes on anything but text.
+func checkReveal(layer LayerPlan, anim *Animation) error {
+	if anim.Has(revealProps...) && layer.Kind != "text" {
+		return fmt.Errorf("reveal keyframes (%s) need a text element", strings.Join(revealProps, ", "))
+	}
+	return nil
 }
 
 // targetElement applies an element clip to the layout element it targets in
@@ -506,7 +783,7 @@ func (c *advancedContext) targetElement(clip obj, o owner, shift time.Duration) 
 	if err != nil {
 		return false, err
 	}
-	anim, err := parseKeyframes(frames, length, visualProps)
+	anim, err := parseKeyframes(frames, length, textProps)
 	if err != nil {
 		return false, err
 	}
@@ -532,6 +809,9 @@ func (c *advancedContext) targetElement(clip obj, o owner, shift time.Duration) 
 			continue
 		}
 		hit = true
+		if err := checkReveal(*layer, anim); err != nil {
+			return true, err
+		}
 		if len(set) == 0 && !hide {
 			layer.Animation = overrideAnimation(layer.Animation, anim, start)
 			if err := checkAnimatedPanel(*layer); err != nil {
@@ -561,56 +841,94 @@ func (c *advancedContext) targetElement(clip obj, o owner, shift time.Duration) 
 		i++
 	}
 
-	// Custom layout elements: their timeline starts with the element.
+	// Custom layout elements, also inside folders.
+	edit := elementEdit{target: target, anim: anim, set: set, hide: hide, window: window, start: start}
 	for ti := range scene.Tracks {
 		track := &scene.Tracks[ti]
 		if track.ID != "layout" {
 			continue
 		}
-		for i := 0; i < len(track.Clips); i++ {
-			element := &track.Clips[i]
-			if element.ID != target {
-				continue
-			}
-			hit = true
-			if element.Kind == "box" {
-				return true, fmt.Errorf("progress elements cannot be animated or modified")
-			}
-			if len(set) == 0 && !hide {
-				element.Layer.Animation = overrideAnimation(element.Layer.Animation, anim, start-element.Start)
-				if err := checkAnimatedPanel(element.Layer); err != nil {
-					return true, err
-				}
-				continue
-			}
-			shown, overlaps := variantWindow(element.Layer, window)
-			if !overlaps {
-				continue
-			}
-			element.Layer.HideDuring = append(element.Layer.HideDuring, shown)
-			if hide {
-				continue
-			}
-			modified := deepMerge(element.def, set)
-			if err := validateDefinition(modified, "element"); err != nil {
-				return true, err
-			}
-			owner := owner{scene: scene, index: o.index, length: scene.Duration, bindings: element.bindings}
-			variants, err := c.buildClip(modified, owner, element.Start, element.Duration)
+		found, err := c.targetClips(&track.Clips, edit, owner{scene: scene, index: o.index, length: scene.Duration})
+		hit = hit || found
+		if err != nil {
+			return true, err
+		}
+	}
+	return hit, nil
+}
+
+// elementEdit is one element clip, timed on its scene's timeline.
+type elementEdit struct {
+	target string
+	anim   *Animation
+	set    obj
+	hide   bool
+	window Window
+	start  time.Duration
+}
+
+// targetClips applies e to the clips with its target id in one timeline: a
+// scene's layout, or a folder's children (o.offset is where that timeline
+// starts in the scene). A clip's timeline starts with the clip itself, and
+// its show/hide windows are on the timeline it lives in.
+func (c *advancedContext) targetClips(clips *[]ClipPlan, e elementEdit, o owner) (bool, error) {
+	hit := false
+	for i := 0; i < len(*clips); i++ {
+		element := &(*clips)[i]
+		if element.Folder != nil {
+			inner := owner{scene: o.scene, index: o.index, length: element.Duration, offset: o.offset + element.Start}
+			found, err := c.targetClips(&element.Folder.Clips, e, inner)
+			hit = hit || found
 			if err != nil {
 				return true, err
 			}
-			for v := range variants {
-				variants[v].Layer.ShowOnly = &shown
-				variants[v].Layer.HideDuring = nil
-				variants[v].Layer.Animation = overrideAnimation(element.Layer.Animation, anim, start-element.Start)
-				if err := checkAnimatedPanel(variants[v].Layer); err != nil {
-					return true, err
-				}
-			}
-			track.Clips = append(track.Clips[:i+1], append(variants, track.Clips[i+1:]...)...)
-			i += len(variants)
 		}
+		if element.ID != e.target {
+			continue
+		}
+		hit = true
+		if element.Kind == "box" {
+			return true, fmt.Errorf("progress elements cannot be animated or modified")
+		}
+		if err := checkReveal(element.Layer, e.anim); err != nil {
+			return true, err
+		}
+		animStart := e.start - o.offset - element.Start
+		if len(e.set) == 0 && !e.hide {
+			element.Layer.Animation = overrideAnimation(element.Layer.Animation, e.anim, animStart)
+			if err := checkAnimatedPanel(element.Layer); err != nil {
+				return true, err
+			}
+			continue
+		}
+		local := Window{e.window.Start - o.offset, e.window.End - o.offset}
+		shown, overlaps := variantWindow(element.Layer, local)
+		if !overlaps {
+			continue
+		}
+		element.Layer.HideDuring = append(element.Layer.HideDuring, shown)
+		if e.hide {
+			continue
+		}
+		modified := deepMerge(element.def, e.set)
+		if err := validateDefinition(modified, "element"); err != nil {
+			return true, err
+		}
+		rebuild := owner{scene: o.scene, index: o.index, length: o.length, bindings: element.bindings, offset: o.offset, variant: true}
+		variants, err := c.buildClip(modified, rebuild, element.Start, element.Duration)
+		if err != nil {
+			return true, err
+		}
+		for v := range variants {
+			variants[v].Layer.ShowOnly = &shown
+			variants[v].Layer.HideDuring = nil
+			variants[v].Layer.Animation = overrideAnimation(element.Layer.Animation, e.anim, animStart)
+			if err := checkAnimatedPanel(variants[v].Layer); err != nil {
+				return true, err
+			}
+		}
+		*clips = append((*clips)[:i+1], append(variants, (*clips)[i+1:]...)...)
+		i += len(variants)
 	}
 	return hit, nil
 }

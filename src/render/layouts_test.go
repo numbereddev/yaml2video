@@ -282,7 +282,8 @@ func TestElementTargeting(t *testing.T) {
 	}
 	// Scene-relative ASS: the original pauses at 1 s, the variant starts there.
 	doc := textRunDocument(p.Video, textRuns(stat.Clips)[0])
-	if !strings.Contains(doc, "Dialogue: 0,0:00:00.00,0:00:01.00,Advanced") || !strings.Contains(doc, "Dialogue: 0,0:00:01.00,0:00:01.05,Advanced") || !strings.Contains(doc, "Dialogue: 0,0:00:02.00,0:00:03.00,Advanced") {
+	// Animated text is sampled per frame (30 fps here).
+	if !strings.Contains(doc, "Dialogue: 0,0:00:00.00,0:00:01.00,Advanced") || !strings.Contains(doc, "Dialogue: 0,0:00:01.00,0:00:01.03,Advanced") || !strings.Contains(doc, "Dialogue: 0,0:00:02.00,0:00:03.00,Advanced") {
 		t.Errorf("window not reflected in ASS:\n%s", doc)
 	}
 

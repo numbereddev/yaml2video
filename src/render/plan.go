@@ -1,7 +1,10 @@
 // Package render compiles a YAML project into deterministic FFmpeg work.
 package render
 
-import "time"
+import (
+	"regexp"
+	"time"
+)
 
 // Plan describes all intermediate scene renders and the final video render.
 type Plan struct {
@@ -29,7 +32,12 @@ type VideoSpec struct {
 	Height     int
 	FPS        int
 	Background string
+	// CRF is the x264 quality of the final encode (lower is better); zero uses defaultCRF.
+	CRF int
 }
+
+// defaultCRF keeps flat graphics and small text free of visible artifacts.
+const defaultCRF = 16
 
 // ScenePlan describes the assets and timing needed to render one scene.
 type ScenePlan struct {
@@ -67,6 +75,14 @@ type TrackPlan struct {
 	ID        string
 	Clips     []ClipPlan
 	ASSPrefix string
+	// Canvas is a folder's drawing area in frame coordinates: everything its
+	// children reach, which may lie outside the frame. Nil for other tracks.
+	Canvas *Rect
+}
+
+// Rect is an area in frame pixels.
+type Rect struct {
+	X, Y, W, H int
 }
 
 // Window is a time range on a layer's owner timeline.
@@ -79,7 +95,7 @@ type Window struct {
 type ClipPlan struct {
 	// ID names a custom layout element so tracks can target it.
 	ID       string
-	Kind     string // image, rect, circle, text, box, or effect
+	Kind     string // image, rect, circle, text, box, effect, or folder
 	Start    time.Duration
 	Duration time.Duration
 	// Layer carries geometry, media, text, and the clip's own effects and keyframes.
@@ -88,6 +104,10 @@ type ClipPlan struct {
 	Adjustments []AdjustmentPlan
 	// Mix blends an effect clip's result over its input (1 applies it fully).
 	Mix float64
+	// Folder holds a folder clip's children, timed from the folder's start.
+	// They render onto a transparent canvas; the folder's Layer (keyframes,
+	// opacity, pivot) and Adjustments then transform that canvas as one group.
+	Folder *TrackPlan
 
 	// The element definition and bindings, kept to compile modified variants.
 	def      obj
@@ -152,6 +172,18 @@ type LayerPlan struct {
 	Align string
 	// Animation holds advanced-mode keyframes relative to the layer's start.
 	Animation *Animation
+	// Pivot is the frame point that scale and rotation keyframes turn around;
+	// nil uses the layer's center.
+	Pivot *[2]float64
+	// Reveal shows a fraction of a text's characters and lines; animated
+	// reveal properties override these values.
+	Reveal *RevealPlan
+	// Match draws only the characters its matches cover (the first group's,
+	// when it has groups); the others keep their space, like hidden ones.
+	Match *regexp.Regexp
+	// LetterSpacing adds pixels after every character, WordSpacing after every space.
+	LetterSpacing float64
+	WordSpacing   float64
 	// ShowOnly limits the layer to one window; HideDuring removes it from
 	// windows. Both are on the owner's timeline (element modifications).
 	ShowOnly   *Window
@@ -161,6 +193,31 @@ type LayerPlan struct {
 	def    obj
 	source string
 }
+
+// RevealPlan selects the visible part of a text: the characters from
+// CharsStart up to CharsEnd, on the lines from LinesStart up to LinesEnd.
+// Hidden characters and lines keep their space.
+type RevealPlan struct {
+	CharsStart, CharsEnd, LinesStart, LinesEnd RevealValue
+}
+
+// RevealValue is a count of characters or lines, or with Relative a fraction
+// of the text's total (written as a percentage).
+type RevealValue struct {
+	Value    float64
+	Relative bool
+}
+
+// of resolves the value against a total.
+func (v RevealValue) of(total int) float64 {
+	if v.Relative {
+		return v.Value * float64(total)
+	}
+	return v.Value
+}
+
+// defaultReveal shows everything.
+var defaultReveal = RevealPlan{CharsEnd: RevealValue{1, true}, LinesEnd: RevealValue{1, true}}
 
 // EffectPlan describes one v2 semantic effect. Fields not relevant to Type are ignored.
 // Colors use FFmpeg color syntax (e.g. 0xRRGGBB or #RRGGBB).
@@ -288,8 +345,11 @@ type MusicPlan struct {
 	Volume    float64
 	FadeIn    time.Duration
 	FadeOut   time.Duration
-	Normalize bool // Enable loudnorm before applying Volume.
+	Normalize bool // Bring the track to musicLoudness before applying Volume.
 	Ducking   *DuckingPlan
+	// GainDB is the measured normalization gain; Render sets it. Without it,
+	// normalization falls back to loudnorm's dynamic mode.
+	GainDB *float64
 }
 
 // MasterPlan sets the integrated loudness (LUFS) and true-peak ceiling (dBTP)
@@ -297,6 +357,10 @@ type MusicPlan struct {
 type MasterPlan struct {
 	Loudness float64
 	TruePeak float64
+	// GainDB is the measured gain that brings the mix to Loudness; Render sets
+	// it. Without it, the master falls back to loudnorm's dynamic mode, whose
+	// gain rides the program (audible pumping in quiet passages).
+	GainDB *float64
 }
 
 // DuckingPlan reduces music while foreground audio is present.

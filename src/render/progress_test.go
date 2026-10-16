@@ -68,7 +68,7 @@ func TestRenderWithProgressWeighted(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, args := range commands {
-		if !reflect.DeepEqual(args[:4], []string{"ffmpeg", "-progress", "pipe:1", "-nostats"}) {
+		if !reflect.DeepEqual(args[:5], []string{"ffmpeg", "-nostdin", "-progress", "pipe:1", "-nostats"}) {
 			t.Fatalf("missing progress arguments: %v", args)
 		}
 	}

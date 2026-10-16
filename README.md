@@ -32,7 +32,7 @@ Clone this repository and open a terminal in its folder. You need Docker with Co
 $ git clone https://github.com/ondics/yaml2video
 $ cd yaml2video
 $ make build up
-$ make render FILE=examples/simple/video-simple.yaml
+$ make render FILE=examples/simple/video.yaml
 /renders/TVMSVSQRYZTI7EQPGDUVHBHKQK/download
 ```
 
@@ -44,7 +44,7 @@ http://<your ip-address>:8080/renders/TVMSVSQRYZTI7EQPGDUVHBHKQK/download
 
 ## Using CLI for video generation
 
-`make cli` runs yaml2video in the container with your current folder. The example's video YAML includes `template_file: template-simple.yaml`, resolved beside the video YAML, so `-t` is optional. The result is `examples/simple/output.mp4` on your computer.
+`make cli` runs yaml2video in the container with your current folder. The example's video YAML includes `template_file: template.yaml`, resolved beside the video YAML, so `-t` is optional. The result is `examples/simple/output.mp4` on your computer.
 
 For your own files, pass CLI arguments through `ARGS`:
 
@@ -83,7 +83,7 @@ Build the image before starting the server. Rendered files are stored inside the
 To render that example through the API, run:
 
 ```sh
-make render FILE=examples/simple/video-simple.yaml
+make render FILE=examples/simple/video.yaml
 ```
 
 `make render` starts the server if needed and prints the download URL when rendering completes. `FILE` is relative to the mount.  

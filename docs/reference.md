@@ -32,9 +32,9 @@ Content fields:
 
 | Item | Required with a classic layout | Optional |
 | --- | --- | --- |
-| `intro` | At least `title` or `image` | `title`, `image`, `subtitle`, `duration`, `audio`, `sound_effects`, `layout`, `variables` |
-| slide | `image`, `text` | `id`, `label`, `tip`, `alt_text`, `duration`, `audio`, `sound_effects`, `layout`, `variables` |
-| `outro` | `cta` | `image`, `title`, `text`, `duration`, `audio`, `sound_effects`, `layout`, `variables` |
+| `intro` | At least `title` or `image` | `title`, `image`, `subtitle`, `duration`, `audio`, `sound_effects`, `layout`, `variables`, `transition_out`, `transition_in` |
+| slide | `image`, `text` | `id`, `label`, `tip`, `alt_text`, `duration`, `audio`, `sound_effects`, `layout`, `variables`, `transition_out`, `transition_in` |
+| `outro` | `cta` | `image`, `title`, `text`, `duration`, `audio`, `sound_effects`, `layout`, `variables`, `transition_out`, `transition_in` |
 
 `layout` selects one of the template's named layouts for that item. `variables` supplies values for a custom layout's `$(NAME)` bindings (strings, numbers, or booleans). With a custom layout, an item needs only what its layout's variables refer to. See [layouts](layouts.md).
 
@@ -47,7 +47,7 @@ Besides `$schema` and `version`, every template requires:
 | Field | Purpose |
 | --- | --- |
 | `template_id`, `description` | Identity and human-readable purpose. |
-| `format` | `aspect_ratio`, `width`, `height`, and `fps`. Ratios: `9:16`, `1:1`, `16:9`, `4:5`. |
+| `format` | `aspect_ratio`, `width`, `height`, and `fps`. Ratios: `9:16`, `1:1`, `16:9`, `4:5`. Optional `crf` (0–51, default 16) sets the final H.264 quality; lower is better and larger. |
 | `defaults` | Required `theme` and `timing`; optional `typography`, `media`, and `audio`. |
 | `composition` | Ordered `sections` array, with at least two entries. |
 | `layout` | Required `intro`, `slide`, and `outro` default layouts, even when optional content is absent, plus any number of named layouts. Each is classic, custom, or the name of another layout. See [layouts](layouts.md). |
@@ -80,7 +80,7 @@ The renderer processes sections in order, picks each scene's layout (the item's 
 Content-level timing and audio values override template defaults. Scene duration uses the **first available** value:
 
 ```text
-item.duration → section.default_duration → defaults.timing.<role>_duration
+item.duration → layout.duration (custom layouts) → section.default_duration → defaults.timing.<role>_duration
 ```
 
 The current renderer honors `item.duration` whether or not `duration_from` is explicitly present.
@@ -89,7 +89,7 @@ The current renderer honors `item.duration` whether or not `duration_from` is ex
 
 Durations are positive seconds, written as numbers (`3.5`) or strings (`3.5s`). Minutes and millisecond suffixes are unsupported. Sound-effect offsets may be zero.
 
-Each scene uses its section's `transition_out`, falling back to `defaults.timing.transition`. Both are optional: without a transition, scenes cut. For repeated slides, this also applies between slides. `transition_out` may also be a list, which rotates across the section's scenes. A section's `transition_in` sets the transition into each of its scenes. When a boundary has both an out and an in transition, the out transition's blend is used, and each supplies its own side effects (see [advanced mode](advanced.md#transitions)). A transition given on only one side covers both. The last rendered scene has no outgoing transition; an explicit `transition_out` on the final composition section, or `transition_in` on the first, is rejected.
+Each scene uses its content item's `transition_out`, else its custom layout's, else its section's, falling back to `defaults.timing.transition`; `transition_in` resolves the same way without the fallback (see [scene templates](layouts.md#scene-templates)). Both are optional: without a transition, scenes cut. For repeated slides, this also applies between slides. `transition_out` may also be a list, which rotates across the section's scenes. A section's `transition_in` sets the transition into each of its scenes. When a boundary has both an out and an in transition, the out transition's blend is used, and each supplies its own side effects (see [advanced mode](advanced.md#transitions)). A transition given on only one side covers both. The last rendered scene has no outgoing transition; an explicit `transition_out` on the final composition section, or `transition_in` on the first, is rejected.
 
 Built-in transition types:
 

@@ -38,7 +38,7 @@ jobs:
               run: go build ./...
 
             - name: Validate conventional example
-              run: go run ./src -n -t examples/normal/template-normal.yaml examples/normal/video-normal.yaml
+              run: go run ./src -n examples/normal/video.yaml
 
             - name: Validate complex example
-              run: go run ./src -n -t examples/complex/template-complex.yaml examples/complex/video-complex.yaml
+              run: go run ./src -n examples/complex/video.yaml

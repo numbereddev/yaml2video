@@ -137,7 +137,11 @@
 				"scale_y": { "type": "number", "minimum": 0 },
 				"rotation": { "type": "number", "description": "Degrees clockwise around the element center." },
 				"opacity": { "type": "number", "minimum": 0, "maximum": 1 },
-				"volume": { "type": "number", "minimum": 0, "maximum": 1 }
+				"volume": { "type": "number", "minimum": 0, "maximum": 1 },
+				"chars_start": { "$ref": "#/$defs/reveal_amount", "description": "Text only: this many characters at the start are hidden (keeping their space)." },
+				"chars_end": { "$ref": "#/$defs/reveal_amount", "description": "Text only: only characters before this count show; animate it from 0 to \"100%\" to type the text." },
+				"lines_start": { "$ref": "#/$defs/reveal_amount", "description": "Text only: this many lines at the start are hidden." },
+				"lines_end": { "$ref": "#/$defs/reveal_amount", "description": "Text only: only lines before this count show." }
 			}
 		},
 		"time_point": {
@@ -172,7 +176,7 @@
 			"description": "A track clip: any layout element, or an element clip that animates or modifies a layout element.",
 			"type": "object",
 			"required": ["type"],
-			"properties": { "type": { "type": "string", "enum": ["image", "rect", "circle", "text", "progress", "audio", "effect", "element"] } },
+			"properties": { "type": { "type": "string", "enum": ["image", "rect", "circle", "text", "progress", "audio", "effect", "folder", "element"] } },
 			"allOf": [
 				{ "if": { "properties": { "type": { "const": "element" } } }, "then": { "$ref": "#/$defs/element_clip" }, "else": { "$ref": "#/$defs/element" } }
 			]
@@ -181,15 +185,34 @@
 			"description": "A custom layout element. Elements render in list order, so later ones stack on top.",
 			"type": "object",
 			"required": ["type"],
-			"properties": { "type": { "type": "string", "enum": ["image", "rect", "circle", "text", "progress", "audio", "effect"] } },
+			"properties": { "type": { "type": "string", "enum": ["image", "rect", "circle", "text", "progress", "audio", "effect", "folder"] } },
 			"allOf": [
 				{ "if": { "properties": { "type": { "const": "image" } } }, "then": { "$ref": "#/$defs/image_clip" } },
 				{ "if": { "properties": { "type": { "enum": ["rect", "circle"] } } }, "then": { "$ref": "#/$defs/shape_clip" } },
 				{ "if": { "properties": { "type": { "const": "text" } } }, "then": { "$ref": "#/$defs/text_clip" } },
 				{ "if": { "properties": { "type": { "const": "progress" } } }, "then": { "$ref": "#/$defs/progress_clip" } },
 				{ "if": { "properties": { "type": { "const": "audio" } } }, "then": { "$ref": "#/$defs/audio_clip" } },
-				{ "if": { "properties": { "type": { "const": "effect" } } }, "then": { "$ref": "#/$defs/effect_clip" } }
+				{ "if": { "properties": { "type": { "const": "effect" } } }, "then": { "$ref": "#/$defs/effect_clip" } },
+				{ "if": { "properties": { "type": { "const": "folder" } } }, "then": { "$ref": "#/$defs/folder_clip" } }
 			]
+		},
+		"folder_clip": {
+			"description": "A group of clips, nested freely. Children are timed from the folder's start and keep their own keyframes; the folder's keyframes, opacity, and effects transform the whole group.",
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["type", "clips"],
+			"properties": {
+				"type": { "const": "folder" },
+				"id": { "$ref": "#/$defs/element_id" },
+				"optional": { "$ref": "#/$defs/optional" },
+				"start": { "$ref": "#/$defs/time_point" },
+				"duration": { "$ref": "#/$defs/duration" },
+				"keyframes": { "$ref": "#/$defs/keyframes_ref", "description": "Moves, scales, rotates, and fades the group; scale and rotation turn around the pivot." },
+				"pivot": { "$ref": "#/$defs/placement", "description": "The point scale and rotation turn around, placed like an element of zero size. Default: the center of the children." },
+				"opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+				"effects": { "$ref": "#/$defs/effects_ref", "description": "Effect layers over the group's composited children, e.g. shake or glow." },
+				"clips": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/element" } }
+			}
 		},
 		"element_id": {
 			"description": "Names the element so advanced element clips can target it.",
@@ -245,7 +268,7 @@
 			}
 		},
 		"custom_layout": {
-			"description": "A fully custom layout: an ordered list of elements, or an object with a background and elements.",
+			"description": "A fully custom layout: an ordered list of elements, or an object with a background, elements, and the defaults of every scene that uses it.",
 			"oneOf": [
 				{ "type": "array", "items": { "$ref": "#/$defs/element" } },
 				{
@@ -254,7 +277,15 @@
 					"required": ["elements"],
 					"properties": {
 						"background": { "$ref": "#/$defs/color" },
-						"elements": { "type": "array", "items": { "$ref": "#/$defs/element" } }
+						"elements": { "type": "array", "items": { "$ref": "#/$defs/element" } },
+						"duration": { "$ref": "#/$defs/duration", "description": "Scene length unless the content item sets one." },
+						"transition_out": { "$ref": "#/$defs/transition", "description": "Transition out of scenes using this layout, unless the content item sets one." },
+						"transition_in": { "$ref": "#/$defs/transition", "description": "Transition into scenes using this layout, unless the content item sets one." },
+						"tracks": {
+							"description": "Tracks repeated in every scene using this layout, below the template's advanced tracks. They attach to the layout; attach is not allowed.",
+							"type": "array",
+							"items": { "$ref": "#/$defs/track" }
+						}
 					}
 				}
 			]
@@ -320,8 +351,35 @@
 				"style": { "$ref": "#/$defs/text_style" },
 				"effects": { "$ref": "#/$defs/effects" },
 				"max_lines": { "type": "integer", "minimum": 1 },
-				"max_width_ratio": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 }
+				"max_width_ratio": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+				"reveal": { "$ref": "#/$defs/reveal" },
+				"match": { "type": "string", "minLength": 1, "description": "A regular expression (RE2, $(VARIABLES) allowed): only the characters its matches cover show, or its first group's when it has groups. The others keep their space, so texts layered with different matches color one text." },
+				"replace": {
+					"description": "Rewrites the text before layout: every match of pattern (RE2, $(VARIABLES) allowed) becomes with ($1 refers to a group).",
+					"type": "object",
+					"additionalProperties": false,
+					"required": ["pattern", "with"],
+					"properties": { "pattern": { "type": "string", "minLength": 1 }, "with": { "type": "string" } }
+				}
 			}
+		},
+		"reveal": {
+			"description": "The visible part of a text: the characters from chars_start up to chars_end, on the lines from lines_start up to lines_end. Hidden characters and lines keep their space, so nothing moves. Keyframes animate the same properties.",
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"chars_start": { "$ref": "#/$defs/reveal_amount", "default": 0 },
+				"chars_end": { "$ref": "#/$defs/reveal_amount", "default": "100%" },
+				"lines_start": { "$ref": "#/$defs/reveal_amount", "default": 0 },
+				"lines_end": { "$ref": "#/$defs/reveal_amount", "default": "100%" }
+			}
+		},
+		"reveal_amount": {
+			"description": "A count of characters or lines (line breaks are not characters; lines count after wrapping), or a percentage of the total such as \"50%\". Counts between whole numbers round down; counts above the total mean all.",
+			"oneOf": [
+				{ "type": "number", "minimum": 0 },
+				{ "type": "string", "pattern": "^[0-9]+(?:\\.[0-9]+)?%$" }
+			]
 		},
 		"audio_clip": {
 			"type": "object",
@@ -396,7 +454,8 @@
 				},
 				"width": { "type": "integer", "minimum": 1 },
 				"height": { "type": "integer", "minimum": 1 },
-				"fps": { "type": "integer", "minimum": 1, "maximum": 240 }
+				"fps": { "type": "integer", "minimum": 1, "maximum": 240 },
+				"crf": { "type": "integer", "minimum": 0, "maximum": 51, "default": 16, "description": "Quality of the final H.264 encode: lower is better and larger." }
 			}
 		},
 		"defaults": {
@@ -714,7 +773,9 @@
 				"weight": { "type": "string", "enum": ["normal", "medium", "bold"] },
 				"color": { "$ref": "#/$defs/color" },
 				"align": { "type": "string", "enum": ["left", "center", "right"] },
-				"line_spacing": { "type": "number", "minimum": 0 }
+				"line_spacing": { "type": "number", "minimum": 0 },
+				"letter_spacing": { "type": "number", "description": "Extra pixels after every character; negative tightens." },
+				"word_spacing": { "type": "number", "description": "Extra pixels after every space, on top of letter_spacing." }
 			}
 		},
 		"effects": {

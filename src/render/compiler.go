@@ -871,6 +871,7 @@ func compose(v, t obj, base string) (*Plan, error) {
 		Video: VideoSpec{Width: integer(format["width"]),
 			Height:     integer(format["height"]),
 			FPS:        integer(format["fps"]),
+			CRF:        integer(format["crf"]),
 			Background: str(theme["background"])},
 		WorkDir: filepath.Join(base, ".yaml2video"),
 		Output:  filepath.Join(base, "output.mp4"),
@@ -934,12 +935,14 @@ func compose(v, t obj, base string) (*Plan, error) {
 			}
 			sceneIDs[name] = true
 
-			d, err := duration(choose(item["duration"], section["default_duration"], timing[role+"_duration"]))
+			layoutName, layoutDef, err := resolveLayout(layout, role, section, item)
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", name, err)
 			}
+			// A custom layout can carry scene defaults: duration and transitions.
+			sceneDefaults := object(layoutDef)
 
-			layoutName, layoutDef, err := resolveLayout(layout, role, section, item)
+			d, err := duration(choose(item["duration"], sceneDefaults["duration"], section["default_duration"], timing[role+"_duration"]))
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", name, err)
 			}
@@ -986,10 +989,19 @@ func compose(v, t obj, base string) (*Plan, error) {
 
 			scene.Output = filepath.Join(p.WorkDir, "scenes", fmt.Sprintf("scene-%04d.mkv", sceneIndex))
 			p.Scenes = append(p.Scenes, scene)
+			// The item's transitions win over its layout's, then its section's.
 			sceneTr = append(sceneTr, sceneTransitions{
-				out: pick(choose(section["transition_out"], timing["transition"]), i),
-				in:  pick(section["transition_in"], i),
+				out: pick(choose(item["transition_out"], sceneDefaults["transition_out"], section["transition_out"], timing["transition"]), i),
+				in:  pick(choose(item["transition_in"], sceneDefaults["transition_in"], section["transition_in"]), i),
 			})
+		}
+	}
+	if n := len(p.Scenes); n > 0 {
+		if p.Scenes[n-1].item["transition_out"] != nil {
+			return nil, fmt.Errorf("%s: the last scene has no transition_out", p.Scenes[n-1].ID)
+		}
+		if p.Scenes[0].item["transition_in"] != nil {
+			return nil, fmt.Errorf("%s: the first scene has no transition_in", p.Scenes[0].ID)
 		}
 	}
 
@@ -1230,19 +1242,29 @@ func textLayer(value, key string, el, typography, theme obj, video VideoSpec) (L
 	}
 
 	maxChars := max(1, int(float64(width)/(float64(size)*0.4)))
-	// Explicit line breaks are kept; each paragraph is wrapped on its own.
+	// Explicit line breaks are kept; each paragraph is wrapped on its own. A
+	// paragraph that fits is kept verbatim, spaces included, so indented code
+	// stays indented and texts layered over each other keep the same character
+	// positions; a wrapped one keeps its indentation on its first line.
 	var lines []string
 	for paragraph := range strings.SplitSeq(strings.ReplaceAll(value, "\r\n", "\n"), "\n") {
-		line := ""
+		paragraph = strings.ReplaceAll(paragraph, "\t", "    ")
+		if len([]rune(paragraph)) <= maxChars {
+			lines = append(lines, paragraph)
+			continue
+		}
+		line := paragraph[:len(paragraph)-len(strings.TrimLeft(paragraph, " "))]
+		words := 0
 		for word := range strings.FieldsSeq(paragraph) {
-			if line != "" && len([]rune(line))+1+len([]rune(word)) > maxChars {
+			if words > 0 && len([]rune(line))+1+len([]rune(word)) > maxChars {
 				lines = append(lines, line)
-				line = ""
+				line, words = "", 0
 			}
-			if line != "" {
+			if words > 0 {
 				line += " "
 			}
 			line += word
+			words++
 		}
 		lines = append(lines, line)
 	}
@@ -1271,7 +1293,8 @@ func textLayer(value, key string, el, typography, theme obj, video VideoSpec) (L
 		return LayerPlan{}, fmt.Errorf("medium font weight requires render.Plan support")
 	}
 
-	return LayerPlan{Kind: "text", X: x, Y: y, Width: width, Height: height, WrapWidth: width, Font: font, FontSize: size, Color: color, Opacity: 1, Spans: []TextSpan{{Content: strings.Join(lines, "\n"), Color: color, Bold: weight == "bold"}}, Effects: fx}, nil
+	return LayerPlan{Kind: "text", X: x, Y: y, Width: width, Height: height, WrapWidth: width, Font: font, FontSize: size, Color: color, Opacity: 1, Spans: []TextSpan{{Content: strings.Join(lines, "\n"), Color: color, Bold: weight == "bold"}}, Effects: fx,
+		LetterSpacing: num(style["letter_spacing"]), WordSpacing: num(style["word_spacing"])}, nil
 }
 
 func ratio(v any) float64 {

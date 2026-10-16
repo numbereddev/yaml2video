@@ -13,6 +13,8 @@ Advanced mode is an optional `advanced` block in a template, a video, or both. D
 | `scene_transitions`: per-scene in/out overrides | — | ✓ |
 | `master`: loudness-normalize the final mix | ✓ | ✓ (overrides) |
 
+Tracks can also live in a custom layout (`layout.<name>.tracks`), next to its default duration and transitions, so a template describes complete [scene templates](layouts.md#scene-templates) and the video only picks and fills them. Video content items can override a scene's `duration`, `transition_out`, and `transition_in` directly.
+
 ## Keyframes
 
 A keyframe list sets values at moments. Each property animates between the keyframes that set it; `ease` shapes the segment that *starts* at that keyframe. Before the first keyframe a property holds its first value, and after the last it holds the last.
@@ -26,11 +28,11 @@ keyframes:
 ```
 
 - `at` is seconds from the owner's start (the element's scene or the clip), or a negative string counted back from its end, so the same preset works for scenes of any length.
-- Properties: `x`, `y` (pixel offsets from the rest position), `scale`, `scale_x`, `scale_y`, `rotation` (degrees clockwise around the center), `opacity` (0–1), and `volume` (0–1, audio clips only).
+- Properties: `x`, `y` (pixel offsets from the rest position), `scale`, `scale_x`, `scale_y`, `rotation` (degrees clockwise around the center), `opacity` (0–1), `volume` (0–1, audio clips only), and `chars_start`, `chars_end`, `lines_start`, `lines_end` (counts or `"N%"`, text only; see [text reveal](#text-reveal)). A layer whose scale reaches 0 disappears.
 - Easings: `linear`, `step` (hold until the next keyframe), `ease-in`, `ease-out`, `ease-in-out`, `back-in`, `back-out` (overshoot), `elastic-out`, `bounce-out`.
 - Wherever keyframes are accepted you may write a preset name (`keyframes: pop-in`) or a list whose items splice presets (`- { use: pop-in }`).
 
-Keyframed images and shapes are transformed with FFmpeg's `perspective` and `geq` filters; keyframed text is sampled every 50 ms into ASS `\move`/`\t` segments, so every easing curve is followed closely.
+Keyframed images and shapes are transformed with FFmpeg's `perspective` and `geq` filters; keyframed text is sampled once per frame into ASS `\move`/`\t` segments, so every easing curve is followed exactly at frame times.
 
 ## Animating layout elements (template)
 
@@ -95,10 +97,11 @@ Every clip takes `start` (default `0s`, negative counts back from the window's e
 | --- | --- |
 | `image` | `path`, `placement`, `max_width_ratio`, `max_height_ratio`, `fit`, `shape`, `opacity`, image `effects` (as in layouts) |
 | `rect`, `circle` | `width`, `height` (px), `color` (`#RRGGBB`), `placement`, `corner_radius` (rect), `opacity` |
-| `text` | `text`, `placement`, `style`, `max_width_ratio`, `max_lines`, text `effects` (as in layouts; `glass_panel` only without keyframes) |
+| `text` | `text`, `placement`, `style`, `max_width_ratio`, `max_lines`, `reveal` (see [Text reveal](#text-reveal)), text `effects` (as in layouts; `glass_panel` only without keyframes) |
 | `progress` | `placement`, `width_ratio`, `thickness`, `color`, `background_color` (slide scenes only) |
 | `audio` | `path`, `volume`, `fade_in`, `fade_out`, `ducks` (true makes it foreground audio that ducks the music) |
 | `effect` | `effects` (an effect-layer stack), `opacity` (mix) |
+| `folder` | `clips`, `pivot`, `opacity`, `effects` (see [Folders](#folders)) |
 | `element` | `target`, `set`, `keyframes` (see [Element clips](#element-clips)) |
 
 Text, paths, and shape colors take the same `$(NAME)` [variables](layouts.md#variables) as custom layouts (`${NAME}` works too). In scene-attached tracks, a name reads the scene's content item: its `variables`, its fields (`$(title)`, `$(text)`, `$(image)`, …), `$(index)` and `$(total)` for slides, `$(scene)`, `$(role)`, and `$(layout)`. All tracks can use `$(metadata.title)` (and other metadata fields) and `$(duration)`. An unknown name is an error unless it has a `|fallback` or the clip is `optional`, so `path: $(image)` lets a template reuse each slide's own image.
@@ -127,6 +130,86 @@ An `element` clip doesn't draw anything itself. It animates or modifies an eleme
 See [targeting layout elements](layouts.md#targeting-layout-elements-advanced-mode) for the rules on matching.
 
 Advanced text uses an outline-style ASS style, so `text_glow` and `text_outline` surround the letters. Standard layout text keeps its original box-style rendering.
+
+## Folders
+
+A `folder` clip groups clips, folders included, so a composition built from small parts moves as one. It works wherever a clip does: in custom layouts, in tracks, and in other folders.
+
+```yaml
+- type: folder
+  id: code
+  start: 0.3s
+  keyframes:                                 # the whole group pops in
+      - { at: 0s, scale: 0.9, y: 120, opacity: 0, ease: back-out }
+      - { at: 0.5s, scale: 1, y: 0, opacity: 1 }
+  effects: [{ type: shake, amount: 6 }]      # and shakes, children and all
+  clips:
+      - { type: image, id: card, path: assets/card.png, placement: { anchor: center } }
+      - { type: text, id: code-text, text: $(CODE), placement: { anchor: center-left, offset_x: 160 } }
+      - { type: rect, id: cursor, width: 18, height: 44, color: "#D7FF3E", placement: { anchor: center } }
+```
+
+- Children render in order onto a transparent canvas sized to everything they can reach: their boxes grown by their own keyframed offsets, scale, and rotation, plus a margin. The canvas may extend past the frame (up to one frame size on each side), so a child flying in from off screen isn't cut at the frame edge when the folder scales or rotates; small groups get small, fast canvases.
+- Children are timed from the folder's start: a child's `start` of `0.5s` means half a second after the folder appears. Each child keeps its own keyframes, effects, and timing.
+- The folder's `keyframes` (`x`, `y`, `scale`, `scale_x`, `scale_y`, `rotation`, `opacity`) then transform the whole canvas, on top of whatever the children do. Scale and rotation turn around the `pivot`, placed like an element of zero size (`pivot: { anchor: center, offset_y: 200 }`); the default pivot is the center of the children's box.
+- `opacity` fades the group as a unit, so overlapping children don't show through each other.
+- `effects` is an effect-layer stack over the composited children (`shake`, `glow`, `blur`, `rgb_split`, …); an `effect` child inside the folder works the same over the children below it. Both keep the canvas transparent.
+- Element clips reach children at any depth by `id`, and the folder itself by its own `id`. Their times are scene times; yaml2video maps them onto the child's folder.
+- Audio children play on the scene timeline at the folder's offset.
+
+## Text reveal
+
+A text can show only part of its characters or lines. `reveal` sets the visible part, and keyframes animate the same four properties. Each value is a count, or a percentage of the total written as a string:
+
+| Property | Default | Shows |
+| --- | --- | --- |
+| `chars_start` | `0` | characters from this index on (the first `chars_start` are hidden) |
+| `chars_end` | `"100%"` | characters before this index |
+| `lines_start` | `0` | lines from this index on |
+| `lines_end` | `"100%"` | lines before this index |
+
+```yaml
+- type: text
+  text: "content:\n  intro:\n    layout: hook"
+  style: { font_family: "Fira Code", font_size: 36, align: left }
+  placement: { anchor: center-left, offset_x: 160 }
+  keyframes:                                 # types the text in 1.5 s
+      - { at: 0s, chars_end: 0 }
+      - { at: 1.5s, chars_end: "100%" }
+```
+
+- Characters are counted without line breaks, lines after wrapping. `chars_end: 12` shows the first 12 characters; `chars_start: 3` hides the first 3. Counts between whole numbers (while animating) round down, so a character or line is always shown or hidden as a whole; counts above the total mean all.
+- Percentages suit templates, which don't know the length of the text they will show: `"100%"` is every character of whatever text the variable holds. Counts and percentages mix freely between keyframes.
+- Hidden characters and lines are drawn fully transparent: they keep their space, and the visible text never moves, rewraps, or realigns. `chars_start: 3` leaves the fourth character exactly where it was.
+- Character and line visibility combine; a character shows only when both include it.
+- Animating `chars_end` from 0 to `"100%"` types the text; animating `chars_start` the same way erases it from the front. A window that moves both by the same amount shows a fixed number of characters, for example a one-character block cursor over a text of `█` laid out like the code. The visible range updates every frame; a `step` ease or extra keyframes control the rhythm, for example to type each line at its own pace.
+
+### Match and replace
+
+Two text options derive several layers from one text, without preparing copies of it:
+
+- `match` is a regular expression ([RE2](https://github.com/google/re2/wiki/Syntax), `$(VARIABLES)` allowed). Only the characters its matches cover show, or those of its first group when it has groups; the others keep their space like hidden ones and combine with `reveal`.
+- `replace: { pattern, with }` rewrites the text before layout (`$1` in `with` refers to a group).
+
+Syntax coloring is then a stack of the same text with different matches and colors, typed by one shared reveal preset:
+
+```yaml
+- { type: text, text: $(CODE), match: '([A-Za-z0-9_]+):', style: { color: "#F3F1EA", ... }, keyframes: typing }   # keys
+- { type: text, text: $(CODE), match: ':', style: { color: "#6E6E78", ... }, keyframes: typing }                 # colons
+- { type: text, text: $(CODE), match: '"[^"]*"', style: { color: "#D7FF3E", ... }, keyframes: typing }           # strings
+# A cursor: the code as full blocks (one more after the end), one block shown at a time.
+- { type: text, text: "$(CODE) ", replace: { pattern: '[^\n]', with: "█" }, keyframes: cursor-window }
+```
+
+The video can then give the code as an ordinary block scalar:
+
+```yaml
+variables:
+    CODE: |-
+        content:
+          intro:
+            layout: hook
+```
 
 ## Effect layers
 
@@ -233,6 +316,8 @@ advanced:
         loudness: -14     # LUFS, default -14
         true_peak: -1.5   # dBTP, default -1
 ```
+
+Normalization takes two passes. Before the final encode, yaml2video measures the mix's integrated loudness, then applies one fixed gain to reach `loudness` and a limiter that holds peaks under `true_peak`. A fixed gain keeps the mix's own dynamics: fades, drops, and quiet endings stay as quiet as they were. Music with `normalize` (the default) is measured and set to -16 LUFS the same way. `yaml2video -n` lists the commands before measuring, with loudnorm's dynamic mode in place of the measured gain.
 
 ## Rendering notes
 

@@ -1,7 +1,7 @@
 $schema: ../../docs/video.schema.json
 version: 2
 template: office-mobility-layouts
-template_file: template-layouts.yaml
+template_file: template.yaml
 
 metadata:
     title: "Drei kleine Bewegungen fürs Büro"
@@ -31,9 +31,9 @@ content:
         - id: statistik
           layout: stat
           variables:
-            NUMBER: "8"
-            UNIT: "Stunden"
-            CAPTION: "sitzen viele von uns pro Tag – Zeit für Bewegung."
+              NUMBER: "8"
+              UNIT: "Stunden"
+              CAPTION: "sitzen viele von uns pro Tag – Zeit für Bewegung."
 
         # A named classic variant uses the usual slide fields.
         - id: nacken

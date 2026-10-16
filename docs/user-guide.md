@@ -44,7 +44,7 @@ Minimal structure:
 $schema: ./video.schema.json
 version: 2
 template: office-mobility-simple
-template_file: template-simple.yaml
+template_file: template.yaml
 
 metadata:
   title: "Kurze Bewegungspause"
@@ -61,8 +61,8 @@ The selected template supplies the missing layout and timing defaults. `template
 With `template_file` set, render or preview without `-t`:
 
 ```sh
-yaml2video examples/simple/video-simple.yaml
-yaml2video -n examples/simple/video-simple.yaml
+yaml2video examples/simple/video.yaml
+yaml2video -n examples/simple/video.yaml
 ```
 
 An explicit `-t template.yaml` overrides `template_file`. If neither is supplied, rendering errors. Relative `template_file` paths resolve beside the video YAML by default. When `--work-dir` is explicitly supplied, they resolve from that directory instead; a relative `--work-dir` itself resolves from the current working directory. Absolute `template_file` paths are unaffected. Relative explicit `-t` paths always resolve from the current working directory.
@@ -398,9 +398,10 @@ Before rendering, check:
 
 See the included examples for complete documents:
 
-- [`examples/simple/video-simple.yaml`](../examples/simple/video-simple.yaml)
-- [`examples/normal/video-normal.yaml`](../examples/normal/video-normal.yaml)
-- [`examples/complex/video-complex.yaml`](../examples/complex/video-complex.yaml)
-- [`examples/simple/template-simple.yaml`](../examples/simple/template-simple.yaml)
-- [`examples/normal/template-normal.yaml`](../examples/normal/template-normal.yaml)
-- [`examples/complex/template-complex.yaml`](../examples/complex/template-complex.yaml)
+- [`examples/simple/video.yaml`](../examples/simple/video.yaml)
+- [`examples/normal/video.yaml`](../examples/normal/video.yaml)
+- [`examples/complex/video.yaml`](../examples/complex/video.yaml)
+- [`examples/simple/template.yaml`](../examples/simple/template.yaml)
+- [`examples/normal/template.yaml`](../examples/normal/template.yaml)
+- [`examples/complex/template.yaml`](../examples/complex/template.yaml)
+- [`examples/showcase/`](../examples/showcase/): scene templates that carry timing, motion, sound, and transitions, so the video only picks scenes and fills variables

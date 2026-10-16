@@ -21,7 +21,7 @@ func TestLoadTemplateFile(t *testing.T) {
 				t.Fatal(err)
 			}
 			// Remove the example's reference so each case controls selection.
-			raw = []byte(strings.ReplaceAll(string(raw), "template_file: template-simple.yaml\n", ""))
+			raw = []byte(strings.ReplaceAll(string(raw), "template_file: template.yaml\n", ""))
 			reference := filepath.Base(templatePath)
 			base, explicit, message := "", "", ""
 			switch name {

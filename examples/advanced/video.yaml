@@ -1,7 +1,7 @@
 $schema: ../../docs/video.schema.json
 version: 2
 template: office-mobility-advanced
-template_file: template-advanced.yaml
+template_file: template.yaml
 
 metadata:
     title: "Drei kleine Bewegungen fürs Büro"
@@ -22,13 +22,14 @@ content:
     intro:
         title: "Beweg dich kurz!"
 
+    # The template supplies each scene's look, length, motion, sound, and
+    # transitions; items pick a layout and fill it.
     slides:
         # The default classic slide layout.
         - id: schultern
           image: assets/schulterkreisen.png
           text: "Schultern kreisen"
           tip: "10-mal langsam nach hinten kreisen"
-          duration: 3s
 
         # The custom "stat" layout reads only these variables (and falls back
         # for $(label) and $(UNIT)).
@@ -38,22 +39,22 @@ content:
               NUMBER: "8"
               UNIT: "Stunden"
               CAPTION: "sitzen viele von uns pro Tag."
-          duration: 3s
 
-        # A named classic variant; the label also feeds the template's label badge.
+        # A named classic variant; the label feeds the template's label badge,
+        # BADGE its tip badge. This scene overrides its out transition.
         - id: nacken
           layout: slide-image-low
           image: assets/nacken-seitlich.png
           label: "NACKEN"
           text: "Nacken entspannen"
           tip: "Je Seite 10 Sekunden halten"
-          duration: 3s
+          variables: { BADGE: "Tipp: Schultern locker lassen" }
+          transition_out: { type: iris }
 
         - id: beine
           image: assets/beine-strecken.png
           text: "Beine strecken"
           tip: "Füße abwechselnd nach vorne schieben"
-          duration: 3s
 
     # Rendered by the outro alias "closing", a custom layout.
     outro:
@@ -61,44 +62,13 @@ content:
         text: "Eine kurze Pause reicht schon."
         cta: "Speichern und später wiederholen"
 
+# The video can still adjust anything; here only what is unique to it.
 # Video tracks stack above the template's tracks.
 advanced:
-    master:
-        loudness: -16
-
     # Drop a template track for this video.
     disable_tracks: [watermark]
 
-    # Per-scene overrides: leave the neck slide through the template's iris.
-    scene_transitions:
-        exercises-nacken:
-            out: { type: iris }
-
     tracks:
-        # A slow camera push across the whole intro.
-        - id: intro-camera
-          attach: intro
-          clips:
-              - type: effect
-                keyframes:
-                    - { at: 0s, scale: 1 }
-                    - { at: -0s, scale: 1.06 }
-
-        # A one-off badge on a single slide, attached by scene id.
-        - id: tip-badge
-          attach: exercises-nacken
-          clips:
-              - type: text
-                text: "Tipp: Schultern locker lassen"
-                placement: { anchor: bottom-center, offset_y: -70 }
-                style: { font_size: 34, weight: bold, color: "#101820", align: center }
-                max_width_ratio: 0.6
-                max_lines: 1
-                effects:
-                    - { type: glass_panel, color: "#7DE2A8", opacity: 0.95, padding: [24, 14] }
-                start: 0.5s
-                duration: 2s
-
         # Element clips on one slide's classic layout: the image wiggles from
         # 1 s, and the tip stays hidden for the first second.
         - id: legs-motion
@@ -116,32 +86,3 @@ advanced:
                 target: tip
                 duration: 1s
                 set: { visible: false }
-
-        # A pop that ducks the music as the outro lands; volume keyframes shape it.
-        - id: outro-sound
-          attach: outro
-          clips:
-              - type: audio
-                path: assets/pop.wav
-                start: 0.1s
-                duration: 0.35s
-                volume: 0.9
-                fade_in: 0.01s
-                fade_out: 0.1s
-                ducks: true
-                keyframes:
-                    - { at: 0s, volume: 0.4, ease: ease-out }
-                    - { at: 0.1s, volume: 1 }
-
-        # A white flash with chromatic split into the outro.
-        - id: outro-hit
-          attach: outro
-          clips:
-              - type: effect
-                duration: 0.5s
-                effects:
-                    - { type: tint, color: "#FFFFFF", opacity: 0.6 }
-                    - { type: rgb_split, amount: 8 }
-                keyframes:
-                    - { at: 0s, opacity: 1, ease: ease-out }
-                    - { at: 0.5s, opacity: 0 }

@@ -21,32 +21,117 @@ var cameraProps = []string{"x", "y", "scale", "scale_x", "scale_y", "rotation"}
 // consecutive text clips renders through one ASS document at its position.
 func applyTracks(base *ffmpeg.Stream, plan *Plan, tracks []TrackPlan) *ffmpeg.Stream {
 	ordinal := 0
+	return composite(base, plan, tracks, frameSpace(plan.Video), false, &ordinal)
+}
+
+// space is the area a stream draws, in frame coordinates: the frame, or a
+// folder's canvas. Layers are positioned in frame coordinates and drawn
+// relative to their space.
+type space struct {
+	Rect
+	fps int
+}
+
+func frameSpace(video VideoSpec) space {
+	return space{Rect{0, 0, video.Width, video.Height}, video.FPS}
+}
+
+// local moves a layer into the space's own coordinates.
+func (s space) local(l LayerPlan) LayerPlan {
+	l.X, l.Y = l.X-s.X, l.Y-s.Y
+	if l.Pivot != nil {
+		pivot := [2]float64{l.Pivot[0] - float64(s.X), l.Pivot[1] - float64(s.Y)}
+		l.Pivot = &pivot
+	}
+	return l
+}
+
+// composite is applyTracks for an opaque frame or, with canvas, for a
+// folder's transparent canvas, where every step keeps the alpha channel.
+// ordinal counts overlay sources across nested folders.
+func composite(base *ffmpeg.Stream, plan *Plan, tracks []TrackPlan, s space, canvas bool, ordinal *int) *ffmpeg.Stream {
 	for _, track := range tracks {
 		run := 0
 		for i := 0; i < len(track.Clips); i++ {
 			clip := track.Clips[i]
+			clip.Layer = s.local(clip.Layer)
 			switch clip.Kind {
 			case "image", "rect", "circle":
-				ordinal++
-				base = overlayClip(base, plan, clip, ordinal)
+				*ordinal++
+				base = overlayClip(base, plan, s, clip, *ordinal, canvas)
+			case "folder":
+				base = overlayFolder(base, plan, s, clip, canvas, ordinal)
 			case "box":
-				base = base.Filter("drawbox", nil, ffmpeg.KwArgs{
+				base = base.Filter("drawbox", nil, canvasBox(ffmpeg.KwArgs{
 					"x": clip.Layer.X, "y": clip.Layer.Y, "w": clip.Layer.Width, "h": clip.Layer.Height,
 					"color": withOpacity(clip.Layer.Color, clip.Layer.Opacity), "t": "fill", "enable": clipEnable(clip),
-				})
+				}, canvas))
 			case "effect":
-				base = applyEffectClip(base, plan, clip)
+				base = applyEffectClip(base, s, clip, canvas)
 			case "text":
 				for ; i < len(track.Clips) && track.Clips[i].Kind == "text"; i++ {
-					base = textClipPanel(base, track.Clips[i])
+					text := track.Clips[i]
+					text.Layer = s.local(text.Layer)
+					base = textClipPanel(base, text, canvas)
 				}
 				i--
-				base = base.Filter(ffmpegFilterASS, nil, ffmpeg.KwArgs{"filename": filepath.Join(plan.WorkDir, "ass", runASSName(track, run))})
+				args := ffmpeg.KwArgs{"filename": filepath.Join(plan.WorkDir, "ass", runASSName(track, run))}
+				if canvas {
+					args["alpha"] = 1
+				}
+				base = base.Filter(ffmpegFilterASS, nil, args)
 				run++
 			}
 		}
 	}
 	return base
+}
+
+// canvasBox makes a filled drawbox opaque on a transparent canvas, where a
+// blended box would leave the canvas's zero alpha untouched.
+func canvasBox(args ffmpeg.KwArgs, canvas bool) ffmpeg.KwArgs {
+	if canvas {
+		args["replace"] = 1
+	}
+	return args
+}
+
+// overlayArgs adds the canvas pixel format to overlay arguments, so overlays
+// onto a folder canvas keep its alpha and full chroma.
+func overlayArgs(args ffmpeg.KwArgs, canvas bool) ffmpeg.KwArgs {
+	if canvas {
+		args["format"] = "yuv444"
+	}
+	return args
+}
+
+// overlayFolder renders a folder's children onto its transparent canvas (an
+// area that may reach past the frame) with the folder's own timeline,
+// transforms the canvas as one layer (its keyframes turn around the folder's
+// pivot), and overlays it. clip.Layer is already in s's coordinates.
+func overlayFolder(base *ffmpeg.Stream, plan *Plan, s space, clip ClipPlan, canvas bool, ordinal *int) *ffmpeg.Stream {
+	*ordinal++
+	length := sourceLength(clip.Duration, *ordinal)
+	inner := space{*clip.Folder.Canvas, s.fps}
+	// The format must be part of the lavfi source: as a separate input, the
+	// transparent color would be negotiated to a format without alpha first.
+	source := fmt.Sprintf("color=c=black@0:s=%dx%d:r=%d:d=%s,format=yuva444p", inner.W, inner.H, s.fps, ffTime(length))
+	group := ffmpeg.Input(source, ffmpeg.KwArgs{"f": "lavfi"})
+	group = composite(group, plan, []TrackPlan{*clip.Folder}, inner, true, ordinal)
+
+	layer := clip.Layer
+	if layer.Opacity != 1 {
+		group = group.ColorChannelMixer(ffmpeg.KwArgs{"aa": layer.Opacity})
+	}
+	group, x, y := animateMedia(group, s, layer, clip.Start)
+	if clip.Start > 0 {
+		group = group.Filter("setpts", ffmpeg.Args{fmt.Sprintf("PTS+%s/TB", ffTime(clip.Start))})
+	}
+	args := ffmpeg.KwArgs{"x": x, "y": y}
+	if enable := layer.enableExpr(); enable != "" {
+		args["enable"] = enable
+	}
+	return base.Overlay(group, eofActionPass, overlayArgs(args, canvas))
 }
 
 // clipEnable is the timeline expression for a clip's window and the layer's
@@ -59,12 +144,20 @@ func clipEnable(clip ClipPlan) string {
 	return enable
 }
 
-// overlayClip composites one visual clip. ffmpeg-go merges graph nodes with
-// identical content, so each clip's source runs a distinct number of
-// microseconds longer (by its ordinal); the overlay ends it on time regardless.
-func overlayClip(base *ffmpeg.Stream, plan *Plan, clip ClipPlan, ordinal int) *ffmpeg.Stream {
+// sourceLength is the length of a clip's generated source. ffmpeg-go merges
+// graph nodes with identical content, so each source is a distinct number of
+// microseconds (its ordinal) shorter than the clip. Shorter, not longer: a
+// clip ending on a frame boundary would otherwise get one extra frame, one
+// more than text, whose subtitle events end exactly on time.
+func sourceLength(d time.Duration, ordinal int) time.Duration {
+	return max(d-time.Duration(ordinal)*time.Microsecond, time.Microsecond)
+}
+
+// overlayClip composites one visual clip, whose layer is in s's coordinates;
+// see sourceLength for its length.
+func overlayClip(base *ffmpeg.Stream, plan *Plan, s space, clip ClipPlan, ordinal int, canvas bool) *ffmpeg.Stream {
 	layer := clip.Layer
-	length := clip.Duration + time.Duration(ordinal)*time.Microsecond
+	length := sourceLength(clip.Duration, ordinal)
 	var input *ffmpeg.Stream
 	if clip.Kind == "image" {
 		input = mediaLayerStream(plan, ScenePlan{Duration: length}, layer)
@@ -72,7 +165,7 @@ func overlayClip(base *ffmpeg.Stream, plan *Plan, clip ClipPlan, ordinal int) *f
 		input = shapeStream(plan, layer, length)
 	}
 
-	input, x, y := animateMedia(input, plan, layer, clip.Start)
+	input, x, y := animateMedia(input, s, layer, clip.Start)
 	if clip.Start > 0 {
 		input = input.Filter("setpts", ffmpeg.Args{fmt.Sprintf("PTS+%s/TB", ffTime(clip.Start))})
 	}
@@ -80,7 +173,7 @@ func overlayClip(base *ffmpeg.Stream, plan *Plan, clip ClipPlan, ordinal int) *f
 	if enable := layer.enableExpr(); enable != "" {
 		args["enable"] = enable
 	}
-	return base.Overlay(input, eofActionPass, args)
+	return base.Overlay(input, eofActionPass, overlayArgs(args, canvas))
 }
 
 func shapeStream(plan *Plan, layer LayerPlan, d time.Duration) *ffmpeg.Stream {
@@ -96,17 +189,24 @@ func shapeStream(plan *Plan, layer LayerPlan, d time.Duration) *ffmpeg.Stream {
 }
 
 // animateMedia applies keyframes to a prepared media stream whose own timeline
-// starts at the clip start. It returns the stream and its overlay position;
-// start converts the main stream's time t into clip time for x/y expressions.
-func animateMedia(input *ffmpeg.Stream, plan *Plan, layer LayerPlan, start time.Duration) (*ffmpeg.Stream, any, any) {
+// starts at the clip start. It returns the stream and its overlay position in
+// s (the layer is in s's coordinates); start converts the main stream's time
+// t into clip time for x/y expressions.
+func animateMedia(input *ffmpeg.Stream, s space, layer LayerPlan, start time.Duration) (*ffmpeg.Stream, any, any) {
 	anim := layer.Animation
 	if anim == nil {
 		return input, layer.X, layer.Y
 	}
-	if anim.Has("opacity") {
+	// Keyframed opacity, and scales that reach 0 (perspective keeps a
+	// one-pixel sliver of a layer scaled to nothing), become an alpha factor.
+	if collapses := anim.reaches0("scale", "scale_x", "scale_y"); anim.Has("opacity") || collapses {
+		alpha := fmt.Sprintf("alpha(X,Y)*clip(%s,0,1)", anim.Expr("opacity", "T", 1))
+		if collapses {
+			s := anim.Expr("scale", "T", 1)
+			alpha += fmt.Sprintf("*gt(%s*%s,0.002)*gt(%s*%s,0.002)", s, anim.Expr("scale_x", "T", 1), s, anim.Expr("scale_y", "T", 1))
+		}
 		input = input.Filter("format", ffmpeg.Args{"gbrap"}).Filter("geq", nil, ffmpeg.KwArgs{
-			"r": "r(X,Y)", "g": "g(X,Y)", "b": "b(X,Y)",
-			"a": fmt.Sprintf("alpha(X,Y)*clip(%s,0,1)", anim.Expr("opacity", "T", 1)),
+			"r": "r(X,Y)", "g": "g(X,Y)", "b": "b(X,Y)", "a": alpha,
 		})
 	}
 	if !anim.Has("scale", "scale_x", "scale_y", "rotation") {
@@ -118,18 +218,22 @@ func animateMedia(input *ffmpeg.Stream, plan *Plan, layer LayerPlan, start time.
 	}
 
 	// Scale and rotation: place the layer on a transparent canvas that covers
-	// the frame and the layer, then move the canvas corners with perspective.
-	w, h := plan.Video.Width, plan.Video.Height
+	// the space and the layer, then move the canvas corners with perspective.
+	w, h := s.W, s.H
 	left := min(0, layer.X) - animationMargin
 	top := min(0, layer.Y) - animationMargin
 	cw := max(w, layer.X+layer.Width) + animationMargin - left
 	ch := max(h, layer.Y+layer.Height) + animationMargin - top
 	ox, oy := layer.X-left, layer.Y-top
+	px, py := float64(ox)+float64(layer.Width)/2, float64(oy)+float64(layer.Height)/2
+	if layer.Pivot != nil {
+		px, py = layer.Pivot[0]-float64(left), layer.Pivot[1]-float64(top)
+	}
 
-	t := fmt.Sprintf("(in/%d)", plan.Video.FPS)
+	t := fmt.Sprintf("(in/%d)", s.fps)
 	input = input.Filter("format", ffmpeg.Args{"yuva444p"}).
 		Filter("pad", nil, ffmpeg.KwArgs{"w": cw, "h": ch, "x": ox, "y": oy, "color": "black@0"}).
-		Filter("perspective", nil, transformCorners(anim, t, float64(cw), float64(ch), float64(ox)+float64(layer.Width)/2, float64(oy)+float64(layer.Height)/2))
+		Filter("perspective", nil, transformCorners(anim, t, float64(cw), float64(ch), px, py))
 	return input, left, top
 }
 
@@ -152,7 +256,7 @@ func transformCorners(anim *Animation, t string, cw, ch, px, py float64) ffmpeg.
 }
 
 // textClipPanel draws a text clip's glass panel while the clip shows; its text is in the run's ASS.
-func textClipPanel(base *ffmpeg.Stream, clip ClipPlan) *ffmpeg.Stream {
+func textClipPanel(base *ffmpeg.Stream, clip ClipPlan, canvas bool) *ffmpeg.Stream {
 	enable := clipEnable(clip)
 	for _, fx := range clip.Layer.Effects {
 		if fx.Type != "glass_panel" {
@@ -169,9 +273,9 @@ func textClipPanel(base *ffmpeg.Stream, clip ClipPlan) *ffmpeg.Stream {
 			split := base.Split()
 			blurred := split.Get("1").Filter("gblur", nil, ffmpeg.KwArgs{"sigma": fx.Blur})
 			mask := fmt.Sprintf("between(X,%d,%d)*between(Y,%d,%d)", x, x+w-1, y, y+h-1)
-			base = split.Get("0").Overlay(maskAlpha(blurred, mask), eofActionEndAll, ffmpeg.KwArgs{"x": 0, "y": 0, "enable": enable})
+			base = split.Get("0").Overlay(maskAlpha(blurred, mask), eofActionEndAll, overlayArgs(ffmpeg.KwArgs{"x": 0, "y": 0, "enable": enable}, canvas))
 		}
-		base = base.Filter("drawbox", nil, ffmpeg.KwArgs{"x": x, "y": y, "w": w, "h": h, "color": withOpacity(color, fx.Opacity), "t": "fill", "enable": enable})
+		base = base.Filter("drawbox", nil, canvasBox(ffmpeg.KwArgs{"x": x, "y": y, "w": w, "h": h, "color": withOpacity(color, fx.Opacity), "t": "fill", "enable": enable}, canvas))
 	}
 	return base
 }
@@ -181,20 +285,25 @@ func clipWindow(clip ClipPlan) string {
 }
 
 // applyEffectClip runs an effect clip's stacked adjustments over everything
-// composited so far, limited to the clip's window and blended by its mix.
-func applyEffectClip(base *ffmpeg.Stream, plan *Plan, clip ClipPlan) *ffmpeg.Stream {
+// composited so far, limited to the clip's window and blended by its mix. On a
+// folder canvas the adjustments keep the canvas's alpha.
+func applyEffectClip(base *ffmpeg.Stream, s space, clip ClipPlan, canvas bool) *ffmpeg.Stream {
 	enable := clipEnable(clip)
 	anim := clip.Layer.Animation
 	mixed := anim.Has("opacity") || clip.Mix < 1
+	format := "yuv420p"
+	if canvas {
+		format = "yuva444p"
+	}
 
 	original, effected := base, base
 	if mixed {
-		split := base.Filter("format", ffmpeg.Args{"yuv420p"}).Split()
+		split := base.Filter("format", ffmpeg.Args{format}).Split()
 		original, effected = split.Get("0"), split.Get("1")
 	}
 
-	fps := plan.Video.FPS
-	w, h := float64(plan.Video.Width), float64(plan.Video.Height)
+	fps := s.fps
+	w, h := float64(s.W), float64(s.H)
 	if anim.Has(cameraProps...) {
 		t := fmt.Sprintf("(in/%d-%s)", fps, ffTime(clip.Start))
 		args := transformCorners(anim, t, w, h, w/2, h/2)
@@ -202,6 +311,13 @@ func applyEffectClip(base *ffmpeg.Stream, plan *Plan, clip ClipPlan) *ffmpeg.Str
 		effected = effected.Filter("perspective", nil, args)
 	}
 	for _, a := range clip.Adjustments {
+		if a.Type == "vignette" && canvas {
+			// vignette has no alpha formats: grade the color and restore the alpha.
+			split := effected.Split()
+			alpha := split.Get("1").Filter("alphaextract", nil)
+			effected = ffmpeg.Filter([]*ffmpeg.Stream{adjust(split.Get("0"), a, enable, fps, w, h), alpha}, "alphamerge", nil)
+			continue
+		}
 		effected = adjust(effected, a, enable, fps, w, h)
 	}
 
@@ -209,7 +325,7 @@ func applyEffectClip(base *ffmpeg.Stream, plan *Plan, clip ClipPlan) *ffmpeg.Str
 		return effected
 	}
 	m := fmt.Sprintf("%s*%s", num6(clip.Mix), anim.Expr("opacity", fmt.Sprintf("(T-%s)", ffTime(clip.Start)), 1))
-	return ffmpeg.Filter([]*ffmpeg.Stream{original, effected.Filter("format", ffmpeg.Args{"yuv420p"})}, "blend", nil, ffmpeg.KwArgs{
+	return ffmpeg.Filter([]*ffmpeg.Stream{original, effected.Filter("format", ffmpeg.Args{format})}, "blend", nil, ffmpeg.KwArgs{
 		"all_expr": fmt.Sprintf("A+(B-A)*clip(%s,0,1)", m),
 		"enable":   enable,
 	})
@@ -243,14 +359,17 @@ func adjust(s *ffmpeg.Stream, a AdjustmentPlan, enable string, fps int, w, h flo
 		// Opacity 0 leaves the frame untouched and 1 is a heavy vignette (lens angle 0.9 rad).
 		return s.Filter("vignette", nil, ffmpeg.KwArgs{"angle": num6(math.Max(a.Opacity*0.9, 0.001)), "enable": enable})
 	case "glow":
-		split := s.Split()
+		// Screen-blend in RGB: in YUV, screening the neutral chroma planes tints the frame.
+		split := s.Filter("format", ffmpeg.Args{"gbrap"}).Split()
 		halo := split.Get("1").Filter("gblur", nil, ffmpeg.KwArgs{"sigma": a.Radius, "enable": enable})
 		return ffmpeg.Filter([]*ffmpeg.Stream{split.Get("0"), halo}, "blend", nil, ffmpeg.KwArgs{"all_mode": "screen", "all_opacity": a.Strength, "enable": enable})
 	case "rgb_split":
 		shift := int(math.Round(a.Amount))
 		return s.Filter("rgbashift", nil, ffmpeg.KwArgs{"rh": -shift, "bh": shift, "enable": enable})
 	case "grain":
-		return s.Filter("noise", nil, ffmpeg.KwArgs{"alls": int(math.Round(a.Amount)), "allf": "t+u", "enable": enable})
+		// Color components only: on a folder canvas, alpha noise would speckle the edges.
+		amount := int(math.Round(a.Amount))
+		return s.Filter("noise", nil, ffmpeg.KwArgs{"c0s": amount, "c1s": amount, "c2s": amount, "allf": "t+u", "enable": enable})
 	case "tint":
 		return s.Filter("drawbox", nil, ffmpeg.KwArgs{"x": 0, "y": 0, "w": "iw", "h": "ih", "color": withOpacity(a.Color, a.Opacity), "t": "fill", "enable": enable})
 	case "shake":

@@ -181,32 +181,41 @@ func printSummary(videoPath string, plan *render.Plan) {
 func printTracks(tracks []render.TrackPlan, offset time.Duration) {
 	for _, track := range tracks {
 		fmt.Printf("       track %s:\n", track.ID)
-		for _, clip := range track.Clips {
-			detail := clip.Layer.Path
-			switch clip.Kind {
-			case "effect":
-				names := make([]string, 0, len(clip.Adjustments))
-				for _, a := range clip.Adjustments {
-					names = append(names, a.Type)
-				}
-				detail = strings.Join(names, " + ")
-			case "text":
-				for _, span := range clip.Layer.Spans {
-					detail += strings.ReplaceAll(span.Content, "\n", " ")
-				}
-				detail = fmt.Sprintf("%q", detail)
+		printClips(track.Clips, offset, "         ")
+	}
+}
+
+// printClips lists clips with absolute times; folder children follow their
+// folder, indented, on the folder's timeline.
+func printClips(clips []render.ClipPlan, offset time.Duration, indent string) {
+	for _, clip := range clips {
+		detail := clip.Layer.Path
+		switch clip.Kind {
+		case "effect":
+			names := make([]string, 0, len(clip.Adjustments))
+			for _, a := range clip.Adjustments {
+				names = append(names, a.Type)
 			}
-			if clip.ID != "" {
-				detail = "#" + clip.ID + " " + detail
+			detail = strings.Join(names, " + ")
+		case "text":
+			for _, span := range clip.Layer.Spans {
+				detail += strings.ReplaceAll(span.Content, "\n", " ")
 			}
-			fmt.Printf("         %-6s %s – %s %s", clip.Kind, offset+clip.Start, offset+clip.Start+clip.Duration, detail)
-			if clip.Layer.Animation != nil {
-				fmt.Printf(" [keyframes: %s]", animatedProps(clip.Layer.Animation))
-			}
-			if clip.Layer.ShowOnly != nil {
-				fmt.Printf(" [shown %s–%s]", offset+clip.Layer.ShowOnly.Start, offset+clip.Layer.ShowOnly.End)
-			}
-			fmt.Println()
+			detail = fmt.Sprintf("%q", detail)
+		}
+		if clip.ID != "" {
+			detail = "#" + clip.ID + " " + detail
+		}
+		fmt.Printf("%s%-6s %s – %s %s", indent, clip.Kind, offset+clip.Start, offset+clip.Start+clip.Duration, detail)
+		if clip.Layer.Animation != nil {
+			fmt.Printf(" [keyframes: %s]", animatedProps(clip.Layer.Animation))
+		}
+		if clip.Layer.ShowOnly != nil {
+			fmt.Printf(" [shown %s–%s]", offset+clip.Layer.ShowOnly.Start, offset+clip.Layer.ShowOnly.End)
+		}
+		fmt.Println()
+		if clip.Folder != nil {
+			printClips(clip.Folder.Clips, offset+clip.Start, indent+"  ")
 		}
 	}
 }
