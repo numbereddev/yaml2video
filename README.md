@@ -19,7 +19,8 @@ Features
 
 Showcase
 
-<video src="media/showcase.mp4" controls width="720"></video>
+![examples/showcase/showcase.mp4](examples/showcase/showcase.mp4)
+<   video src="media/showcase.mp4" controls width="720">< /video>
 
 ## Prerequisites
 
