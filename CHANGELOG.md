@@ -30,6 +30,7 @@ All notable changes to the project are documented here.
 - Text reveal: `reveal: { chars_start, chars_end, lines_start, lines_end }` on text, and the same four keyframe properties, as counts of characters and lines or as percentages (`"100%"`). Hidden characters and lines keep their space, so animating `chars_end` types a text without moving it.
 - Scene templates: custom layouts can set `duration`, `transition_out`, `transition_in`, and `tracks` for every scene that uses them; content items can override `transition_out` and `transition_in`.
 - Text style `letter_spacing` and `word_spacing`.
+- `width` and `height` keyframes for rect, circle, and image clips: they resize around the center without stretching corner radii or resampling images.
 - Text `match` (show only the characters a regular expression covers, keeping the others' space) and `replace` (rewrite the text before layout), so one text can be layered into syntax colors or a cursor grid.
 - Template `format.crf` sets the quality of the final encode.
 

@@ -211,7 +211,7 @@ func mediaLayerStream(plan *Plan, scene ScenePlan, layer LayerPlan) *ffmpeg.Stre
 			Filter("format", ffmpeg.Args{"rgba"}).
 			ColorChannelMixer(ffmpeg.KwArgs{"aa": layer.Opacity})
 	}
-	if layer.Shape == "circle" || layer.Shape == "rounded-rectangle" {
+	if masked(layer) {
 		input = maskAlpha(input, shapeMask(layer))
 	}
 

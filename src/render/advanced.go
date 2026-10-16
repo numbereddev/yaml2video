@@ -22,7 +22,9 @@ import (
 
 var (
 	visualProps = map[string]bool{"x": true, "y": true, "scale": true, "scale_x": true, "scale_y": true, "rotation": true, "opacity": true}
-	textProps   = map[string]bool{"x": true, "y": true, "scale": true, "scale_x": true, "scale_y": true, "rotation": true, "opacity": true,
+	sizedProps  = map[string]bool{"x": true, "y": true, "scale": true, "scale_x": true, "scale_y": true, "rotation": true, "opacity": true,
+		"width": true, "height": true}
+	textProps  = map[string]bool{"x": true, "y": true, "scale": true, "scale_x": true, "scale_y": true, "rotation": true, "opacity": true,
 		"chars_start": true, "chars_end": true, "lines_start": true, "lines_end": true}
 	effectProps = map[string]bool{"x": true, "y": true, "scale": true, "scale_x": true, "scale_y": true, "rotation": true, "opacity": true}
 	audioProps  = map[string]bool{"volume": true}
@@ -405,6 +407,8 @@ func (c *advancedContext) buildClip(clip obj, o owner, start, length time.Durati
 		allowed = effectProps
 	case "text":
 		allowed = textProps
+	case "image", "rect", "circle":
+		allowed = sizedProps
 	}
 	frames, err := c.keyframeList(clip["keyframes"])
 	if err != nil {
@@ -437,6 +441,7 @@ func (c *advancedContext) buildClip(clip obj, o owner, start, length time.Durati
 		if err := validateEffects(layer, length); err != nil {
 			return nil, err
 		}
+		fitAnimatedSize(&layer)
 		plan.Layer = layer
 	case "rect", "circle":
 		w, h := integer(clip["width"]), integer(clip["height"])
@@ -459,6 +464,7 @@ func (c *advancedContext) buildClip(clip obj, o owner, start, length time.Durati
 		}
 		plan.Layer = LayerPlan{Kind: kind, X: x, Y: y, Width: w, Height: h, Color: color, Shape: shape,
 			CornerRadius: integer(clip["corner_radius"]), Opacity: num(choose(clip["opacity"], jsonNumber(1))), Duration: length, Animation: anim}
+		fitAnimatedSize(&plan.Layer)
 	case "text":
 		value, err := bind(str(clip["text"]), o.bindings)
 		if err != nil {
@@ -656,6 +662,38 @@ func folderCanvas(clips []ClipPlan, video VideoSpec) Rect {
 	// Even sizes keep chroma-subsampled steps exact.
 	cw, ch := int(right-left+1)&^1, int(bottom-top+1)&^1
 	return Rect{int(left), int(top), max(cw, 2), max(ch, 2)}
+}
+
+// fitAnimatedSize lays out a layer with width or height keyframes at the
+// largest size they reach, centered on its rest box (overshooting easings
+// included). The render masks it to the animated size frame by frame.
+func fitAnimatedSize(l *LayerPlan) {
+	if !l.Animation.Has("width", "height") {
+		return
+	}
+	grow := func(name string, size int) int {
+		frames := l.Animation.Props[name]
+		if len(frames) == 0 {
+			return size
+		}
+		lo, hi, over := frames[0].Value, frames[0].Value, 0.0
+		for _, f := range frames {
+			lo, hi = math.Min(lo, f.Value), math.Max(hi, f.Value)
+			switch f.Ease {
+			case "back-out":
+				over = math.Max(over, 0.1)
+			case "elastic-out":
+				over = math.Max(over, 0.4)
+			}
+		}
+		grown := max(size, int(math.Ceil(hi+(hi-lo)*over)))
+		// An even growth keeps the rest center on a whole pixel.
+		return size + (grown-size+1)&^1
+	}
+	w, h := grow("width", l.Width), grow("height", l.Height)
+	l.X -= (w - l.Width) / 2
+	l.Y -= (h - l.Height) / 2
+	l.Width, l.Height = w, h
 }
 
 // clipExtent is the frame area a clip can cover over its keyframes.

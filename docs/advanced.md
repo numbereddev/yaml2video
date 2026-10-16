@@ -28,8 +28,9 @@ keyframes:
 ```
 
 - `at` is seconds from the owner's start (the element's scene or the clip), or a negative string counted back from its end, so the same preset works for scenes of any length.
-- Properties: `x`, `y` (pixel offsets from the rest position), `scale`, `scale_x`, `scale_y`, `rotation` (degrees clockwise around the center), `opacity` (0–1), `volume` (0–1, audio clips only), and `chars_start`, `chars_end`, `lines_start`, `lines_end` (counts or `"N%"`, text only; see [text reveal](#text-reveal)). A layer whose scale reaches 0 disappears.
+- Properties: `x`, `y` (pixel offsets from the rest position), `scale`, `scale_x`, `scale_y`, `rotation` (degrees clockwise around the center), `opacity` (0–1), `volume` (0–1, audio clips only), `width` and `height` (pixels, see below), and `chars_start`, `chars_end`, `lines_start`, `lines_end` (counts or `"N%"`, text only; see [text reveal](#text-reveal)). A layer whose scale reaches 0 disappears.
 - Easings: `linear`, `step` (hold until the next keyframe), `ease-in`, `ease-out`, `ease-in-out`, `back-in`, `back-out` (overshoot), `elastic-out`, `bounce-out`.
+- `width` and `height` resize `rect`, `circle`, and `image` clips around their center. Unlike `scale`, they keep a rectangle's `corner_radius` (a circle becomes a pill), and an image isn't resampled: it's fitted once at the largest size the keyframes reach and cropped to the animated size. Grow from an edge by animating `y` (or `x`) by half the change.
 - Wherever keyframes are accepted you may write a preset name (`keyframes: pop-in`) or a list whose items splice presets (`- { use: pop-in }`).
 
 Keyframed images and shapes are transformed with FFmpeg's `perspective` and `geq` filters; keyframed text is sampled once per frame into ASS `\move`/`\t` segments, so every easing curve is followed exactly at frame times.

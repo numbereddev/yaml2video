@@ -135,6 +135,8 @@
 				"scale": { "type": "number", "minimum": 0 },
 				"scale_x": { "type": "number", "minimum": 0 },
 				"scale_y": { "type": "number", "minimum": 0 },
+				"width": { "type": "number", "minimum": 0, "description": "Width in pixels around the center (rect, circle, and image clips); corner radii keep their size." },
+				"height": { "type": "number", "minimum": 0, "description": "Height in pixels around the center (rect, circle, and image clips); corner radii keep their size." },
 				"rotation": { "type": "number", "description": "Degrees clockwise around the element center." },
 				"opacity": { "type": "number", "minimum": 0, "maximum": 1 },
 				"volume": { "type": "number", "minimum": 0, "maximum": 1 },

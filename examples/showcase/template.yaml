@@ -1361,51 +1361,51 @@ advanced:
             - { at: 0s, lines_end: "100%" }
         cursor-window:
             - { at: 0s, chars_start: 0, chars_end: 0 }
-        # The equalizer: one kick per beat, four intensities.
+            # The equalizer: one kick per beat, four intensities.
         pulse-a:
-            - { at: 0s, scale_y: 1, ease: ease-out }
-            - { at: 0.4s, scale_y: 0.16, ease: linear }
-            - { at: 0.5s, scale_y: 0.6, ease: ease-out }
-            - { at: 0.9s, scale_y: 0.16, ease: linear }
-            - { at: 1s, scale_y: 0.85, ease: ease-out }
-            - { at: 1.4s, scale_y: 0.16, ease: linear }
-            - { at: 1.5s, scale_y: 0.55, ease: ease-out }
-            - { at: 1.9s, scale_y: 0.16, ease: linear }
-            - { at: 2s, scale_y: 0.95, ease: ease-out }
-            - { at: 2.45s, scale_y: 0.12 }
+            - { at: 0s, height: 460, ease: ease-out }
+            - { at: 0.4s, height: 73.6, ease: linear }
+            - { at: 0.5s, height: 276, ease: ease-out }
+            - { at: 0.9s, height: 73.6, ease: linear }
+            - { at: 1s, height: 391, ease: ease-out }
+            - { at: 1.4s, height: 73.6, ease: linear }
+            - { at: 1.5s, height: 253, ease: ease-out }
+            - { at: 1.9s, height: 73.6, ease: linear }
+            - { at: 2s, height: 437, ease: ease-out }
+            - { at: 2.45s, height: 55.2 }
         pulse-b:
-            - { at: 0s, scale_y: 0.7, ease: ease-out }
-            - { at: 0.4s, scale_y: 0.14, ease: linear }
-            - { at: 0.5s, scale_y: 0.9, ease: ease-out }
-            - { at: 0.9s, scale_y: 0.14, ease: linear }
-            - { at: 1s, scale_y: 0.5, ease: ease-out }
-            - { at: 1.4s, scale_y: 0.14, ease: linear }
-            - { at: 1.5s, scale_y: 0.8, ease: ease-out }
-            - { at: 1.9s, scale_y: 0.14, ease: linear }
-            - { at: 2s, scale_y: 0.65, ease: ease-out }
-            - { at: 2.45s, scale_y: 0.12 }
+            - { at: 0s, height: 322, ease: ease-out }
+            - { at: 0.4s, height: 64.4, ease: linear }
+            - { at: 0.5s, height: 414, ease: ease-out }
+            - { at: 0.9s, height: 64.4, ease: linear }
+            - { at: 1s, height: 230, ease: ease-out }
+            - { at: 1.4s, height: 64.4, ease: linear }
+            - { at: 1.5s, height: 368, ease: ease-out }
+            - { at: 1.9s, height: 64.4, ease: linear }
+            - { at: 2s, height: 299, ease: ease-out }
+            - { at: 2.45s, height: 55.2 }
         pulse-c:
-            - { at: 0s, scale_y: 0.45, ease: ease-out }
-            - { at: 0.4s, scale_y: 0.12, ease: linear }
-            - { at: 0.5s, scale_y: 0.6, ease: ease-out }
-            - { at: 0.9s, scale_y: 0.12, ease: linear }
-            - { at: 1s, scale_y: 0.7, ease: ease-out }
-            - { at: 1.4s, scale_y: 0.12, ease: linear }
-            - { at: 1.5s, scale_y: 0.4, ease: ease-out }
-            - { at: 1.9s, scale_y: 0.12, ease: linear }
-            - { at: 2s, scale_y: 0.55, ease: ease-out }
-            - { at: 2.45s, scale_y: 0.12 }
+            - { at: 0s, height: 207, ease: ease-out }
+            - { at: 0.4s, height: 55.2, ease: linear }
+            - { at: 0.5s, height: 276, ease: ease-out }
+            - { at: 0.9s, height: 55.2, ease: linear }
+            - { at: 1s, height: 322, ease: ease-out }
+            - { at: 1.4s, height: 55.2, ease: linear }
+            - { at: 1.5s, height: 184, ease: ease-out }
+            - { at: 1.9s, height: 55.2, ease: linear }
+            - { at: 2s, height: 253, ease: ease-out }
+            - { at: 2.45s, height: 55.2 }
         pulse-d:
-            - { at: 0s, scale_y: 0.25, ease: ease-out }
-            - { at: 0.4s, scale_y: 0.1, ease: linear }
-            - { at: 0.5s, scale_y: 0.35, ease: ease-out }
-            - { at: 0.9s, scale_y: 0.1, ease: linear }
-            - { at: 1s, scale_y: 0.3, ease: ease-out }
-            - { at: 1.4s, scale_y: 0.1, ease: linear }
-            - { at: 1.5s, scale_y: 0.4, ease: ease-out }
-            - { at: 1.9s, scale_y: 0.1, ease: linear }
-            - { at: 2s, scale_y: 0.3, ease: ease-out }
-            - { at: 2.45s, scale_y: 0.1 }
+            - { at: 0s, height: 115, ease: ease-out }
+            - { at: 0.4s, height: 46, ease: linear }
+            - { at: 0.5s, height: 161, ease: ease-out }
+            - { at: 0.9s, height: 46, ease: linear }
+            - { at: 1s, height: 138, ease: ease-out }
+            - { at: 1.4s, height: 46, ease: linear }
+            - { at: 1.5s, height: 184, ease: ease-out }
+            - { at: 1.9s, height: 46, ease: linear }
+            - { at: 2s, height: 138, ease: ease-out }
+            - { at: 2.45s, height: 46 }
 
     effects:
         glitch:

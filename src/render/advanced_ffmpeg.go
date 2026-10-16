@@ -182,7 +182,7 @@ func shapeStream(plan *Plan, layer LayerPlan, d time.Duration) *ffmpeg.Stream {
 	if layer.Opacity != 1 {
 		input = input.ColorChannelMixer(ffmpeg.KwArgs{"aa": layer.Opacity})
 	}
-	if layer.Shape == "circle" || layer.Shape == "rounded-rectangle" {
+	if masked(layer) {
 		input = maskAlpha(input, shapeMask(layer))
 	}
 	return input

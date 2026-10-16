@@ -14,15 +14,20 @@ import (
 // position, rotation is in degrees clockwise, and scale multiplies the size
 // around the element's center. The reveal properties (text only) count the
 // characters and lines of a text: a number, or a percentage of the total
-// written as a string ("100%").
+// written as a string ("100%"). Width and height (shapes and images) are
+// sizes in pixels around the element's center; unlike scale, they keep corner
+// radii and image detail as they are.
 var keyframeProperties = []string{"x", "y", "scale", "scale_x", "scale_y", "rotation", "opacity", "volume",
-	"chars_start", "chars_end", "lines_start", "lines_end"}
+	"width", "height", "chars_start", "chars_end", "lines_start", "lines_end"}
 
 // revealProps are the text reveal properties.
 var revealProps = []string{"chars_start", "chars_end", "lines_start", "lines_end"}
 
 // unitProps are the properties limited to 0–1.
 var unitProps = map[string]bool{"opacity": true, "volume": true}
+
+// sizeProps are the properties that can't be negative.
+var sizeProps = map[string]bool{"width": true, "height": true}
 
 var easings = map[string]bool{
 	"linear": true, "step": true, "ease-in": true, "ease-out": true, "ease-in-out": true,
@@ -292,6 +297,9 @@ func parseKeyframes(raw any, length time.Duration, allowed map[string]bool) (*An
 		for _, f := range frames {
 			if unitProps[name] && (f.Value < 0 || f.Value > 1) {
 				return nil, fmt.Errorf("%s keyframes must be between 0 and 1", name)
+			}
+			if sizeProps[name] && f.Value < 0 {
+				return nil, fmt.Errorf("%s keyframes must be at least 0", name)
 			}
 		}
 	}

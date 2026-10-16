@@ -386,6 +386,34 @@ func TestRevealKeyframesNeedText(t *testing.T) {
 	}
 }
 
+func TestSizeKeyframes(t *testing.T) {
+	sized := strings.Replace(folderTemplate, `{ type: rect, id: hl, width: 300, height: 40, color: "#D7FF3E", placement: { anchor: center, offset_y: 100 } }`,
+		`{ type: rect, id: hl, width: 300, height: 40, corner_radius: 20, color: "#D7FF3E", placement: { anchor: center, offset_y: 100 },
+             keyframes: [{ at: 0s, height: 40, ease: back-out }, { at: 0.5s, height: 201 }] }`, 1)
+	p := loadFolders(t, folderVideo, sized)
+	hl := findClip(layoutTrack(p.Scenes[0]).Clips, "hl").Layer
+	// Laid out at the largest height plus back-out headroom, an even step
+	// taller, around the same center; the width stays.
+	if hl.Width != 300 || hl.Height != 40+178 || hl.Y+hl.Height/2 != 960+100 || hl.X != 390 {
+		t.Errorf("layer %d,%d %dx%d", hl.X, hl.Y, hl.Width, hl.Height)
+	}
+	if mask := shapeMask(hl); !strings.Contains(mask, "hypot") || !strings.Contains(mask, "st(2,max(min(20,min(ld(0),ld(1))),0))") {
+		t.Errorf("mask %s", mask)
+	}
+	if _, err := p.Commands(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, broken := range []string{
+		strings.Replace(folderTemplate, "reveal: { chars_end: \"50%\" }", "keyframes: [{ at: 0s, width: 10 }]", 1),
+		strings.Replace(sized, "height: 201", "height: -1", 1),
+	} {
+		if _, err := FromBytes([]byte(folderVideo), []byte(broken), t.TempDir()); err == nil {
+			t.Error("expected an error")
+		}
+	}
+}
+
 func TestTextKeepsIndentationAndSpacing(t *testing.T) {
 	el := obj{"placement": obj{"anchor": "center"}, "style": obj{"font_size": 40.0, "word_spacing": 12.0}, "max_width_ratio": 0.5}
 	layer, err := textLayer("key:\n    nested:  two", "text", el, obj{}, obj{"text_color": "#FFFFFF"}, VideoSpec{Width: 1000, Height: 1000})
