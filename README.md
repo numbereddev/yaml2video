@@ -19,9 +19,7 @@ Features
 
 Showcase
 
-![examples/showcase/showcase.mp4](examples/showcase/showcase.mp4)
-
-<video src="examples/showcase/showcase.mp4" controls width="720"></video>
+[![yaml2video showcase on YouTube](https://img.youtube.com/vi/FRqc2Kr5sQc/hqdefault.jpg)](https://www.youtube.com/shorts/FRqc2Kr5sQc)
 
 ## Prerequisites
 
