@@ -24,7 +24,7 @@ var (
 	visualProps = map[string]bool{"x": true, "y": true, "scale": true, "scale_x": true, "scale_y": true, "rotation": true, "opacity": true}
 	sizedProps  = map[string]bool{"x": true, "y": true, "scale": true, "scale_x": true, "scale_y": true, "rotation": true, "opacity": true,
 		"width": true, "height": true}
-	textProps  = map[string]bool{"x": true, "y": true, "scale": true, "scale_x": true, "scale_y": true, "rotation": true, "opacity": true,
+	textProps = map[string]bool{"x": true, "y": true, "scale": true, "scale_x": true, "scale_y": true, "rotation": true, "opacity": true,
 		"chars_start": true, "chars_end": true, "lines_start": true, "lines_end": true}
 	effectProps = map[string]bool{"x": true, "y": true, "scale": true, "scale_x": true, "scale_y": true, "rotation": true, "opacity": true}
 	audioProps  = map[string]bool{"volume": true}
