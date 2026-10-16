@@ -17,6 +17,10 @@ Features
 * Visual and audio effects, including sliding animations, smooth transitions, and background music
 * MP4 output ready to use and share
 
+Showcase
+
+<video src="media/showcase.mp4" controls width="720"></video>
+
 ## Prerequisites
 
 * Docker / Docker Compose

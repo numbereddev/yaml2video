@@ -299,8 +299,8 @@ layout:
 
     # ── Shout: one word per beat on a full-bleed color ────────────────────────
     shout:
-        duration: 1.15s                      # one beat plus the 0.15 s overlap
-        transition_out: { type: cover-up, duration: 0.15s }
+        duration: 1s # two beats; a cut doesn't overlap the next scene
+        transition_out: { type: cut }
         elements:
             - { type: rect, width: 1080, height: 1920, color: $(BG), placement: { anchor: center } }
             - type: text
