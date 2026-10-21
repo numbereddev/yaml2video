@@ -19,7 +19,9 @@ Features
 
 Showcase
 
-<video src="media/showcase.mp4" controls width="720"></video>
+This is a little showcase of yaml2video. See the video and template file in [examples/showcase](examples/showcase)
+
+[![yaml2video showcase on YouTube](https://img.youtube.com/vi/FRqc2Kr5sQc/hqdefault.jpg)](https://www.youtube.com/shorts/FRqc2Kr5sQc)
 
 ## Prerequisites
 
