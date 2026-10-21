@@ -121,6 +121,30 @@ Elements require `placement.anchor`, optionally with pixel offsets `offset_x` an
 
 Text supports font family, size, weight, color, alignment, maximum width, and maximum line count. Text exceeding `max_lines` is rejected, not truncated. `weight` is a name (`thin`, `extralight`, `light`, `normal`/`regular`, `medium`, `semibold`, `bold`, `extrabold`, `black`: 100–900) or a number from 1 to 1000, as in CSS; a font without that weight uses its nearest one. The schema also permits `line_spacing`, but the current renderer rejects nonzero line spacing. Media supports `cover`/`contain`, maximum width/height ratios, and `rectangle`, `rounded-rectangle`, or `circle` shapes.
 
+### Trimming image and video layers
+
+In scene-based YAML (`scenes[].layers[]`), both `type: image` and `type: video` accept `trim`. Values are fractions of the original source dimensions removed from each edge, before scaling and fitting:
+
+- `trim: 0.1`: remove 10% from every edge.
+- `trim: [0.1, 0.2]`: remove 10% from the top and bottom, 20% from the left and right.
+- `trim: [0.1, 0.2, 0.05, 0.15]`: remove fractions in **top, bottom, left, right** order.
+
+Values must be nonnegative, and each pair of opposite edges must total less than 1. Omitting `trim` leaves the source unchanged. The remaining region is fitted into the layer's dimensions using `cover` or `contain`.
+
+```yaml
+scenes:
+  - id: cropped-photo
+    duration: 3
+    layers:
+      - type: image
+        path: assets/photo.png
+        trim: [0.1, 0.1, 0.2, 0.05]
+        width: 600
+        height: 400
+        fit: contain
+        transform: center
+```
+
 ### Fonts
 
 Text is measured with the font file that draws it, shaped (kerning and ligatures included) the way libass lays it out, so wrapping, text boxes, highlights, and carets fit the actual glyphs. A `font_family` resolves, in this order, to:

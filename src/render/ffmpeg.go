@@ -222,34 +222,35 @@ func mediaLayerStream(plan *Plan, scene ScenePlan, layer LayerPlan) *ffmpeg.Stre
 }
 
 func mediaInput(plan *Plan, scene ScenePlan, layer LayerPlan) *ffmpeg.Stream {
+	var input *ffmpeg.Stream
 	if layer.Kind == "image" {
-		return ffmpeg.Input(layer.Path, ffmpeg.KwArgs{
+		input = ffmpeg.Input(layer.Path, ffmpeg.KwArgs{
 			"loop":      1,
 			"framerate": plan.Video.FPS,
 			"t":         ffTime(scene.Duration),
 		})
-	}
+	} else {
+		inputArgs := ffmpeg.KwArgs{}
+		if layer.SourceOffset > 0 {
+			inputArgs["ss"] = ffTime(layer.SourceOffset)
+		}
 
-	inputArgs := ffmpeg.KwArgs{}
-	if layer.SourceOffset > 0 {
-		inputArgs["ss"] = ffTime(layer.SourceOffset)
+		input = ffmpeg.Input(layer.Path, inputArgs).
+			Video().
+			Filter("trim", nil, ffmpeg.KwArgs{
+				"duration": ffTime(mediaDuration(layer.Duration, scene.Duration)),
+			}).
+			Filter("setpts", ffmpeg.Args{"PTS-STARTPTS"})
 	}
-
-	input := ffmpeg.Input(layer.Path, inputArgs).
-		Video().
-		Filter("trim", nil, ffmpeg.KwArgs{
-			"duration": ffTime(mediaDuration(layer.Duration, scene.Duration)),
-		}).
-		Filter("setpts", ffmpeg.Args{"PTS-STARTPTS"})
 
 	if layer.Trim != nil {
-		input = trimVideoFrame(input, *layer.Trim)
+		input = trimMediaFrame(input, *layer.Trim)
 	}
 
 	return input
 }
 
-func trimVideoFrame(input *ffmpeg.Stream, trim TrimPlan) *ffmpeg.Stream {
+func trimMediaFrame(input *ffmpeg.Stream, trim TrimPlan) *ffmpeg.Stream {
 	return input.Filter("crop", ffmpeg.Args{
 		fmt.Sprintf("iw*(1-%g-%g)", trim.Left, trim.Right),
 		fmt.Sprintf("ih*(1-%g-%g)", trim.Top, trim.Bottom),

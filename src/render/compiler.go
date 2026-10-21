@@ -408,19 +408,17 @@ func compileMediaLayer(layer project.Layer, plan LayerPlan) (LayerPlan, error) {
 		if layer.Duration != nil {
 			plan.Duration = seconds(*layer.Duration)
 		}
-		if layer.Trim != nil {
-			if err := layer.Trim.Validate(); err != nil {
-				return plan, fmt.Errorf("video trim: %w", err)
-			}
-			plan.Trim = &TrimPlan{
-				Top:    layer.Trim.Top,
-				Bottom: layer.Trim.Bottom,
-				Left:   layer.Trim.Left,
-				Right:  layer.Trim.Right,
-			}
+	}
+	if layer.Trim != nil {
+		if err := layer.Trim.Validate(); err != nil {
+			return plan, fmt.Errorf("%s trim: %w", layer.Type, err)
 		}
-	} else if layer.Trim != nil {
-		return plan, fmt.Errorf("trim is only supported for video layers")
+		plan.Trim = &TrimPlan{
+			Top:    layer.Trim.Top,
+			Bottom: layer.Trim.Bottom,
+			Left:   layer.Trim.Left,
+			Right:  layer.Trim.Right,
+		}
 	}
 
 	return plan, nil
