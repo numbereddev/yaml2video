@@ -264,12 +264,25 @@ func fitLayerStream(input *ffmpeg.Stream, layer LayerPlan) *ffmpeg.Stream {
 	height := strconv.Itoa(layer.Height)
 
 	if layer.Fit == "cover" {
+		x, y := "(iw-ow)/2", "(ih-oh)/2"
+		if layer.FitX != nil {
+			x = fmt.Sprintf("(iw-ow)*%g", *layer.FitX)
+		}
+		if layer.FitY != nil {
+			y = fmt.Sprintf("(ih-oh)*%g", *layer.FitY)
+		}
 		return input.
 			Filter("scale", ffmpeg.Args{width, height, "force_original_aspect_ratio=increase"}).
-			Filter("crop", ffmpeg.Args{width, height})
+			Filter("crop", ffmpeg.Args{width, height, x, y})
 	}
 
 	padX, padY := containPadding(layer.Anchor)
+	if layer.FitX != nil {
+		padX = fmt.Sprintf("(ow-iw)*%g", *layer.FitX)
+	}
+	if layer.FitY != nil {
+		padY = fmt.Sprintf("(oh-ih)*%g", *layer.FitY)
+	}
 	return input.
 		Filter("scale", ffmpeg.Args{width, height, "force_original_aspect_ratio=decrease:force_divisible_by=2"}).
 		Filter("format", ffmpeg.Args{"rgba"}).

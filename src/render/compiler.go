@@ -871,7 +871,7 @@ func compose(v, t obj, base string) (*Plan, error) {
 			Height:     integer(format["height"]),
 			FPS:        integer(format["fps"]),
 			CRF:        integer(format["crf"]),
-			Background: str(theme["background"])},
+			Background: backgroundColor(theme["background"])},
 		WorkDir: filepath.Join(base, ".yaml2video"),
 		Output:  filepath.Join(base, "output.mp4"),
 	}
@@ -961,7 +961,9 @@ func compose(v, t obj, base string) (*Plan, error) {
 			sceneIndex := len(p.Scenes)
 			if isCustomLayout(layoutDef) {
 				elements, background := customLayout(layoutDef, theme)
-				scene.Background = background
+				if err := composeBackground(&scene, background, p, base, object(defaults["media"])); err != nil {
+					return nil, fmt.Errorf("%s.background: %w", name, err)
+				}
 				if err := adv.compileCustomLayout(&scene, sceneIndex, elements); err != nil {
 					return nil, fmt.Errorf("%s: layout %q: %w", name, layoutName, err)
 				}
@@ -1226,7 +1228,32 @@ func mediaLayer(source string, el, defaults obj, video VideoSpec) (LayerPlan, er
 	if shape == "" {
 		shape = "rectangle"
 	}
-	return LayerPlan{Kind: "image", Path: source, Fit: str(choose(el["fit"], defaults["default_fit"], "cover")), Anchor: str(object(el["placement"])["anchor"]), Shape: shape, X: x, Y: y, Width: w, Height: h, Opacity: 1, Effects: fx}, nil
+	fitX, err := fitPosition(el, "left", "right")
+	if err != nil {
+		return LayerPlan{}, err
+	}
+	fitY, err := fitPosition(el, "top", "bottom")
+	if err != nil {
+		return LayerPlan{}, err
+	}
+	return LayerPlan{Kind: "image", Path: source, Fit: str(choose(el["fit"], defaults["default_fit"], "cover")), FitX: fitX, FitY: fitY, Anchor: str(object(el["placement"])["anchor"]), Shape: shape, X: x, Y: y, Width: w, Height: h, Opacity: 1, Effects: fx}, nil
+}
+
+func fitPosition(el obj, start, end string) (*float64, error) {
+	if el[start] != nil && el[end] != nil {
+		return nil, fmt.Errorf("specify only one of %s and %s", start, end)
+	}
+	if el[start] == nil && el[end] == nil {
+		return nil, nil
+	}
+	value := num(choose(el[start], el[end]))
+	if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > 1 {
+		return nil, fmt.Errorf("%s/%s fit position must be in [0,1]", start, end)
+	}
+	if el[end] != nil {
+		value = 1 - value
+	}
+	return &value, nil
 }
 
 func textLayer(value, key string, el, typography, theme obj, video VideoSpec) (LayerPlan, error) {
